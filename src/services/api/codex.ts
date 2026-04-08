@@ -33,6 +33,7 @@ import {
 } from '../../utils/codex/provider.js'
 import { sanitizeJsonSchema } from './openai/convertTools.js'
 import { logForDebugging } from '../../utils/debug.js'
+import { appendProviderPayloadDump } from './dumpPrompts.js'
 import { getWebSocketTLSOptions } from '../../utils/mtls.js'
 import {
   getWebSocketProxyAgent,
@@ -554,7 +555,7 @@ function buildResponsesRequest(params: {
           }
         : undefined
 
-    return {
+    const request = {
       model: options.model,
       instructions: systemPrompt.join('\n\n'),
       input: messages.flatMap(convertMessageToResponsesInput),
@@ -580,6 +581,17 @@ function buildResponsesRequest(params: {
           }
         : {}),
     }
+
+    void appendProviderPayloadDump({
+      timestamp: new Date().toISOString(),
+      provider: 'codex',
+      querySource: options.querySource,
+      model: options.model,
+      systemPrompt: [...systemPrompt],
+      payload: request,
+    }).catch(() => {})
+
+    return request
   })
 }
 

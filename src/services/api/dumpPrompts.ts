@@ -3,7 +3,7 @@ import { createHash } from 'crypto'
 import { promises as fs } from 'fs'
 import { dirname, join } from 'path'
 import { getSessionId } from 'src/bootstrap/state.js'
-import { getClaudeConfigHomeDir } from '../../utils/envUtils.js'
+import { getClaudeConfigHomeDir, isEnvTruthy } from '../../utils/envUtils.js'
 import { jsonParse, jsonStringify } from '../../utils/slowOperations.js'
 
 function hashString(str: string): string {
@@ -25,6 +25,24 @@ type DumpState = {
 
 // Track state per session to avoid duplicating data
 const dumpState = new Map<string, DumpState>()
+
+function shouldDumpPrompts(): boolean {
+  return (
+    process.env.USER_TYPE === 'ant' ||
+    isEnvTruthy(process.env.CLAUDE_CODE_DUMP_PROMPTS)
+  )
+}
+
+export function getProviderPayloadDumpPath(): string {
+  return join(getClaudeConfigHomeDir(), 'dump-prompts', 'provider-payloads.jsonl')
+}
+
+export async function appendProviderPayloadDump(data: unknown): Promise<void> {
+  if (!shouldDumpPrompts()) return
+  const filePath = getProviderPayloadDumpPath()
+  await fs.mkdir(dirname(filePath), { recursive: true })
+  await fs.appendFile(filePath, `${jsonStringify(data)}\n`)
+}
 
 export function getLastApiRequests(): Array<{
   timestamp: string

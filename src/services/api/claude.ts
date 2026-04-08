@@ -10,6 +10,7 @@ import type {
   BetaRawMessageStreamEvent,
   BetaRequestDocumentBlock,
   BetaStopReason,
+  BetaTextBlockParam,
   BetaToolChoiceAuto,
   BetaToolChoiceTool,
   BetaToolResultBlockParam,
@@ -69,7 +70,7 @@ import {
   getSonnet1mExpTreatmentEnabled,
 } from '../../utils/context.js'
 import { resolveAppliedEffort } from '../../utils/effort.js'
-import { isEnvTruthy } from '../../utils/envUtils.js'
+import { getClaudeConfigHomeDir, isEnvTruthy } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 import { computeFingerprintFromMessages } from '../../utils/fingerprint.js'
 import { captureAPIRequest, logError } from '../../utils/log.js'
@@ -107,6 +108,30 @@ const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
   ? (require('../../utils/permissions/autoModeState.js') as typeof import('../../utils/permissions/autoModeState.js'))
   : null
 
+function shouldDumpFinalSystemPrompt(): boolean {
+  return isEnvTruthy(process.env.CLAUDE_CODE_DUMP_PROMPTS)
+}
+
+function getFinalSystemPromptDumpPath(): string {
+  return `${getClaudeConfigHomeDir()}/dump-prompts/final-system.jsonl`
+}
+
+async function dumpFinalSystemPrompt(data: {
+  timestamp: string
+  querySource: string
+  model: string
+  provider: string
+  systemPrompt: string[]
+  systemBlocks: BetaTextBlockParam[]
+}): Promise<void> {
+  if (!shouldDumpFinalSystemPrompt()) return
+  const filePath = getFinalSystemPromptDumpPath()
+  await fs.mkdir(`${getClaudeConfigHomeDir()}/dump-prompts`, {
+    recursive: true,
+  })
+  await fs.appendFile(filePath, `${jsonStringify(data)}\n`)
+}
+
 import { feature } from 'bun:bundle'
 import type { ClientOptions } from '@anthropic-ai/sdk'
 import {
@@ -114,6 +139,7 @@ import {
   APIError,
   APIUserAbortError,
 } from '@anthropic-ai/sdk/error'
+import { promises as fs } from 'fs'
 import {
   getAfkModeHeaderLatched,
   getCacheEditingHeaderLatched,
@@ -1332,6 +1358,18 @@ async function* queryModel(
   // after shared preprocessing (message normalization, tool filtering,
   // media stripping) but before Anthropic-specific logic (betas, thinking, caching).
   if (getAPIProvider() === 'openai') {
+    const { queryModelOpenAI } = await import('./openai/index.js')
+    yield* queryModelOpenAI(
+      messagesForAPI,
+      systemPrompt,
+      filteredTools,
+      signal,
+      options,
+    )
+    return
+  }
+
+  if (getAPIProvider() === 'codex') {
     const { queryCodexModelWithStreaming } = await import('./codex.js')
     yield* queryCodexModelWithStreaming({
       messages: messagesForAPI,
@@ -1367,6 +1405,15 @@ async function* queryModel(
   logEvent('tengu_api_after_normalize', {
     postNormalizedMessageCount: messagesForAPI.length,
   })
+
+  void dumpFinalSystemPrompt({
+    timestamp: new Date().toISOString(),
+    querySource: options.querySource,
+    model: options.model,
+    provider: getAPIProvider(),
+    systemPrompt: [...systemPrompt],
+    systemBlocks: systemPrompt.map(text => ({ type: 'text', text })),
+  }).catch(() => {})
 
   // Compute fingerprint from first user message for attribution.
   // Must run BEFORE injecting synthetic messages (e.g. deferred tool names)
@@ -1426,6 +1473,14 @@ async function* queryModel(
     skipGlobalCacheForSystemPrompt: needsToolBasedCacheMarker,
     querySource: options.querySource,
   })
+  void dumpFinalSystemPrompt({
+    timestamp: new Date().toISOString(),
+    querySource: options.querySource,
+    model: options.model,
+    provider: getAPIProvider(),
+    systemPrompt: [...systemPrompt],
+    systemBlocks: system,
+  }).catch(() => {})
   const useBetas = betas.length > 0
 
   // Build minimal context for detailed tracing (when beta tracing is enabled)

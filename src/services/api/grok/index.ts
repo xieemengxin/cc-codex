@@ -12,6 +12,7 @@ import { toolToAPISchema } from '../../../utils/api.js'
 import { logForDebugging } from '../../../utils/debug.js'
 import { addToTotalSessionCost } from '../../../cost-tracker.js'
 import { calculateUSDCost } from '../../../utils/modelCost.js'
+import { appendProviderPayloadDump } from '../dumpPrompts.js'
 import type { Options } from '../claude.js'
 import { randomUUID } from 'crypto'
 import {
@@ -59,6 +60,19 @@ export async function* queryModelGrok(
     const openaiMessages = anthropicMessagesToOpenAI(messagesForAPI, systemPrompt)
     const openaiTools = anthropicToolsToOpenAI(standardTools)
     const openaiToolChoice = anthropicToolChoiceToOpenAI(options.toolChoice)
+
+    void appendProviderPayloadDump({
+      timestamp: new Date().toISOString(),
+      provider: 'grok',
+      querySource: options.querySource,
+      model: grokModel,
+      systemPrompt: [...systemPrompt],
+      payload: {
+        messages: openaiMessages,
+        tools: openaiTools,
+        tool_choice: openaiToolChoice ?? null,
+      },
+    }).catch(() => {})
 
     const client = getGrokClient({
       maxRetries: 0,

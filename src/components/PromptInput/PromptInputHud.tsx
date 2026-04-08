@@ -34,6 +34,7 @@ import { isFastModeEnabled } from '../../utils/fastMode.js'
 import { getUserMessageText } from '../../utils/messages.js'
 import { renderModelName } from '../../utils/model/model.js'
 import {
+  getModelProviderKind,
   getModelProviderLabel,
   isCodexProviderEnabled,
 } from '../../utils/model/providerMode.js'
@@ -551,7 +552,13 @@ function getRecentToolStats(messages: Message[]): RecentToolStat[] {
   return Array.from(counts.values())
 }
 
-function getRequestedServiceTierLabel(fastMode: boolean): 'default' | 'fast' | 'flex' {
+function getRequestedServiceTierLabel(
+  fastMode: boolean,
+): 'default' | 'fast' | 'flex' {
+  if (getModelProviderKind() !== 'codex') {
+    return 'default'
+  }
+
   const configured = getCodexProviderConfigValue('service_tier')
   if (configured === 'flex') {
     return 'flex'

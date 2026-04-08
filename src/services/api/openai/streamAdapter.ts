@@ -26,6 +26,7 @@ import { randomUUID } from 'crypto'
 export async function* adaptOpenAIStreamToAnthropic(
   stream: AsyncIterable<ChatCompletionChunk>,
   model: string,
+  serviceTier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority',
 ): AsyncGenerator<BetaRawMessageStreamEvent, void> {
   const messageId = `msg_${randomUUID().replace(/-/g, '').slice(0, 24)}`
 
@@ -83,6 +84,13 @@ export async function* adaptOpenAIStreamToAnthropic(
             output_tokens: 0,
             cache_creation_input_tokens: 0,
             cache_read_input_tokens: cachedTokens,
+            ...(serviceTier === 'priority' || serviceTier === 'flex'
+              ? { service_tier: serviceTier }
+              : serviceTier === 'auto' ||
+                  serviceTier === 'default' ||
+                  serviceTier === 'scale'
+                ? { service_tier: 'standard' }
+                : {}),
           },
         },
       } as BetaRawMessageStreamEvent
@@ -272,6 +280,13 @@ export async function* adaptOpenAIStreamToAnthropic(
         },
         usage: {
           output_tokens: outputTokens,
+          ...(serviceTier === 'priority' || serviceTier === 'flex'
+            ? { service_tier: serviceTier }
+            : serviceTier === 'auto' ||
+                serviceTier === 'default' ||
+                serviceTier === 'scale'
+              ? { service_tier: 'standard' }
+              : {}),
         },
       } as BetaRawMessageStreamEvent
 

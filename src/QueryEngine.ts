@@ -77,6 +77,7 @@ import {
   flushSessionStorage,
   recordTranscript,
 } from './utils/sessionStorage.js'
+import { jsonStringify } from './utils/slowOperations.js'
 import { asSystemPrompt } from './utils/systemPromptType.js'
 import { resolveThemeSetting } from './utils/systemTheme.js'
 import {
@@ -326,6 +327,30 @@ export class QueryEngine {
       ...(memoryMechanicsPrompt ? [memoryMechanicsPrompt] : []),
       ...(appendSystemPrompt ? [appendSystemPrompt] : []),
     ])
+
+    if (isEnvTruthy(process.env.CLAUDE_CODE_DUMP_PROMPTS)) {
+      const { promises: fs } = await import('fs')
+      const { join } = await import('path')
+      const { getClaudeConfigHomeDir } = await import('./utils/envUtils.js')
+      const filePath = join(
+        getClaudeConfigHomeDir(),
+        'dump-prompts',
+        'manual-final-system.jsonl',
+      )
+      await fs.mkdir(join(getClaudeConfigHomeDir(), 'dump-prompts'), {
+        recursive: true,
+      })
+      await fs.appendFile(
+        filePath,
+        `${jsonStringify({
+          timestamp: new Date().toISOString(),
+          customSystemPrompt: customPrompt ?? null,
+          appendSystemPrompt: appendSystemPrompt ?? null,
+          defaultSystemPrompt,
+          finalSystemPrompt: [...systemPrompt],
+        })}\n`,
+      )
+    }
 
     // Register function hook for structured output enforcement
     const hasStructuredOutputTool = tools.some(t =>

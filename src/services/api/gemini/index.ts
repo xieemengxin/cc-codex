@@ -26,6 +26,7 @@ import {
 import { resolveGeminiModel } from './modelMapping.js'
 import { adaptGeminiStreamToAnthropic } from './streamAdapter.js'
 import { GEMINI_THOUGHT_SIGNATURE_FIELD } from './types.js'
+import { appendProviderPayloadDump } from '../dumpPrompts.js'
 
 export async function* queryModelGemini(
   messages: Message[],
@@ -70,6 +71,22 @@ export async function* queryModelGemini(
     )
     const geminiTools = anthropicToolsToGemini(standardTools)
     const toolChoice = anthropicToolChoiceToGemini(options.toolChoice)
+
+    void appendProviderPayloadDump({
+      timestamp: new Date().toISOString(),
+      provider: 'gemini',
+      querySource: options.querySource,
+      model: geminiModel,
+      systemPrompt: [...systemPrompt],
+      payload: {
+        systemInstruction: systemInstruction ?? null,
+        contents,
+        tools: geminiTools,
+        toolConfig: toolChoice
+          ? { functionCallingConfig: toolChoice }
+          : null,
+      },
+    }).catch(() => {})
 
     const stream = streamGeminiGenerateContent({
       model: geminiModel,

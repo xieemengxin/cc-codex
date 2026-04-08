@@ -1,4 +1,5 @@
 import type { BetaToolUnion } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { ChatCompletionChunk } from 'openai/resources/chat/completions/completions.mjs'
 import type { SystemPrompt } from '../../../utils/systemPromptType.js'
 import type { Message, StreamEvent, SystemAPIErrorMessage, AssistantMessage } from '../../../types/message.js'
 import type { Tools } from '../../../Tool.js'
@@ -13,12 +14,32 @@ import { getEmptyToolPermissionContext } from '../../../Tool.js'
 import { logForDebugging } from '../../../utils/debug.js'
 import { addToTotalSessionCost } from '../../../cost-tracker.js'
 import { calculateUSDCost } from '../../../utils/modelCost.js'
+import { getCodexProviderConfigValue } from '../../../utils/codex/config.js'
+import { appendProviderPayloadDump } from '../dumpPrompts.js'
 import type { Options } from '../claude.js'
 import { randomUUID } from 'crypto'
 import {
   createAssistantAPIErrorMessage,
   normalizeContentFromAPI,
 } from '../../../utils/messages.js'
+
+function resolveOpenAIServiceTier(
+  options: Options,
+): 'priority' | 'flex' | undefined {
+  if (options.fastMode) {
+    return 'priority'
+  }
+
+  const configured = getCodexProviderConfigValue('service_tier')
+  if (configured === 'fast') {
+    return 'priority'
+  }
+  if (configured === 'flex') {
+    return 'flex'
+  }
+
+  return undefined
+}
 
 /**
  * OpenAI-compatible query path. Converts Anthropic-format messages/tools to
@@ -67,6 +88,21 @@ export async function* queryModelOpenAI(
     const openaiMessages = anthropicMessagesToOpenAI(messagesForAPI, systemPrompt)
     const openaiTools = anthropicToolsToOpenAI(standardTools)
     const openaiToolChoice = anthropicToolChoiceToOpenAI(options.toolChoice)
+    const serviceTier = resolveOpenAIServiceTier(options)
+
+    void appendProviderPayloadDump({
+      timestamp: new Date().toISOString(),
+      provider: 'openai',
+      querySource: options.querySource,
+      model: openaiModel,
+      systemPrompt: [...systemPrompt],
+      payload: {
+        messages: openaiMessages,
+        tools: openaiTools,
+        tool_choice: openaiToolChoice ?? null,
+        service_tier: serviceTier ?? null,
+      },
+    }).catch(() => {})
 
     // 5. Get client and make streaming request
     const client = getOpenAIClient({
@@ -86,6 +122,7 @@ export async function* queryModelOpenAI(
           tools: openaiTools,
           ...(openaiToolChoice && { tool_choice: openaiToolChoice }),
         }),
+        ...(serviceTier && { service_tier: serviceTier }),
         stream: true,
         stream_options: { include_usage: true },
         ...(options.temperatureOverride !== undefined && {
@@ -95,11 +132,25 @@ export async function* queryModelOpenAI(
       {
         signal,
       },
-    )
+    ) as AsyncIterable<ChatCompletionChunk> & {
+      service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority' | null
+    }
 
     // 7. Convert OpenAI stream to Anthropic events, then process into
     //    AssistantMessage + StreamEvent (matching the Anthropic path behavior)
-    const adaptedStream = adaptOpenAIStreamToAnthropic(stream, openaiModel)
+    const actualServiceTier =
+      stream.service_tier === 'priority' ||
+      stream.service_tier === 'flex' ||
+      stream.service_tier === 'auto' ||
+      stream.service_tier === 'default' ||
+      stream.service_tier === 'scale'
+        ? stream.service_tier
+        : undefined
+    const adaptedStream = adaptOpenAIStreamToAnthropic(
+      stream,
+      openaiModel,
+      actualServiceTier,
+    )
 
     // Accumulate content blocks and usage, same as the Anthropic path in claude.ts
     const contentBlocks: Record<number, any> = {}
