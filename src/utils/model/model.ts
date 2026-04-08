@@ -521,12 +521,22 @@ export function parseUserSpecifiedModel(
   modelInput: ModelName | ModelAlias,
 ): ModelName {
   const modelInputTrimmed = modelInput.trim()
+  const normalizedModel = modelInputTrimmed.toLowerCase()
 
   if (isCodexProviderEnabled()) {
+    const has1mTag = has1mContext(normalizedModel)
+    const modelString = has1mTag
+      ? normalizedModel.replace(/\[1m\]$/i, '').trim()
+      : normalizedModel
+
+    if (isModelAlias(modelString)) {
+      return modelString === 'best'
+        ? getBestModel()
+        : getCodexProviderConfigValue('model') ?? getCodexDefaultModel()
+    }
+
     return modelInputTrimmed
   }
-
-  const normalizedModel = modelInputTrimmed.toLowerCase()
 
   const has1mTag = has1mContext(normalizedModel)
   const modelString = has1mTag

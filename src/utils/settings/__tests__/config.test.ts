@@ -480,4 +480,9 @@ describe("gemini settings", () => {
     const result = SettingsSchema().safeParse({ modelType: "gemini" });
     expect(result.success).toBe(true);
   });
+
+  test("accepts codex-oauth modelType", () => {
+    const result = SettingsSchema().safeParse({ modelType: "codex-oauth" });
+    expect(result.success).toBe(true);
+  });
 });

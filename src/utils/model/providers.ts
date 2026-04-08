@@ -7,15 +7,28 @@ export type APIProvider =
   | 'bedrock'
   | 'vertex'
   | 'foundry'
+  | 'codex'
   | 'openai'
   | 'gemini'
   | 'grok'
 
-export function getAPIProvider(): APIProvider {
-  const modelType = getInitialSettings().modelType
+export function getAPIProviderForModelType(
+  modelType: string | undefined,
+): APIProvider | null {
+  if (modelType === 'codex-oauth') return 'codex'
   if (modelType === 'openai') return 'openai'
   if (modelType === 'gemini') return 'gemini'
   if (modelType === 'grok') return 'grok'
+  return null
+}
+
+export function getAPIProvider(): APIProvider {
+  const providerFromModelType = getAPIProviderForModelType(
+    getInitialSettings().modelType,
+  )
+  if (providerFromModelType) {
+    return providerFromModelType
+  }
 
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK)) return 'bedrock'
   if (isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX)) return 'vertex'

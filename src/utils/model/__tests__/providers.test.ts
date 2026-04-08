@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { mock } from "bun:test";
 
-let mockedModelType: "gemini" | undefined;
+let mockedModelType: "codex-oauth" | "gemini" | undefined;
 
 mock.module("../../settings/settings.js", () => ({
   getInitialSettings: () =>
@@ -50,6 +50,11 @@ describe("getAPIProvider", () => {
   test('returns "gemini" when modelType is gemini', () => {
     mockedModelType = "gemini";
     expect(getAPIProvider()).toBe("gemini");
+  });
+
+  test('returns "codex" when modelType is codex-oauth', () => {
+    mockedModelType = "codex-oauth";
+    expect(getAPIProvider()).toBe("codex");
   });
 
   test("modelType takes precedence over environment variables", () => {

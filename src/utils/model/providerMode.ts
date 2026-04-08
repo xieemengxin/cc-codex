@@ -19,7 +19,7 @@ export function getModelProviderKind(): ModelProviderKind {
     return envOverride
   }
 
-  return getAPIProvider() === 'openai' ? 'codex' : 'anthropic'
+  return getAPIProvider() === 'codex' ? 'codex' : 'anthropic'
 }
 
 export function isCodexProviderEnabled(): boolean {

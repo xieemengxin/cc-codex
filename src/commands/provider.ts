@@ -36,15 +36,27 @@ function getMergedEnv(): Record<string, string> {
 const call: LocalCommandCall = async (args, context) => {
   const arg = args.trim().toLowerCase()
 
+  const syncSessionProvider = (modelType: string | undefined): void => {
+    context.setAppState(prev => ({
+      ...prev,
+      settings: {
+        ...prev.settings,
+        modelType: modelType as typeof prev.settings.modelType,
+      },
+    }))
+    context.onChangeAPIKey()
+  }
+
   // No argument: show current provider
   if (!arg) {
-    const current = getAPIProvider()
+    const current = getSettings_DEPRECATED()?.modelType ?? getAPIProvider()
     return { type: 'text', value: `Current API provider: ${current}` }
   }
 
   // unset - clear settings, fallback to env vars
   if (arg === 'unset') {
     updateSettingsForSource('userSettings', { modelType: undefined })
+    syncSessionProvider(undefined)
     // Also clear all provider-specific env vars to prevent conflicts
     delete process.env.CLAUDE_CODE_USE_BEDROCK
     delete process.env.CLAUDE_CODE_USE_VERTEX
@@ -62,6 +74,7 @@ const call: LocalCommandCall = async (args, context) => {
   const validProviders = [
     'anthropic',
     'openai',
+    'codex-oauth',
     'gemini',
     'grok',
     'bedrock',
@@ -75,29 +88,43 @@ const call: LocalCommandCall = async (args, context) => {
     }
   }
 
+  if (arg === 'codex-oauth') {
+    const hasOauth = !!getCodexBearerToken()
+    updateSettingsForSource('userSettings', { modelType: 'codex-oauth' as any })
+    applyConfigEnvironmentVariables()
+    syncSessionProvider('codex-oauth')
+    return {
+      type: 'text',
+      value: hasOauth
+        ? 'Switched to Codex OAuth provider.\nUsing the saved ChatGPT/Codex OAuth session.'
+        : 'Switched to Codex OAuth provider.\nWarning: No Codex OAuth session is configured yet.\nRun /login to authorize this terminal.',
+    }
+  }
+
   // Check env vars when switching to openai (including settings.env)
   if (arg === 'openai') {
     const mergedEnv = getMergedEnv()
     const hasKey = !!mergedEnv.OPENAI_API_KEY
-    const hasOauth = !!getCodexBearerToken()
     const hasUrl = !!mergedEnv.OPENAI_BASE_URL
-    if (!hasKey && !hasOauth) {
+    if (!hasKey) {
       updateSettingsForSource('userSettings', { modelType: 'openai' })
+      syncSessionProvider('openai')
       return {
         type: 'text',
         value:
-          'Switched to OpenAI/Codex provider.\n' +
-          'Warning: No OpenAI API key or Codex OAuth session is configured.\n' +
+          'Switched to OpenAI-compatible provider.\n' +
+          'Warning: No OpenAI API key is configured.\n' +
           'Configure it via /login or set OPENAI_API_KEY manually.',
       }
     }
     if (!hasUrl) {
       updateSettingsForSource('userSettings', { modelType: 'openai' })
+      syncSessionProvider('openai')
       return {
         type: 'text',
         value:
-          'Switched to OpenAI/Codex provider.\n' +
-          'Using the default official Codex base URL. Set OPENAI_BASE_URL only if you want a custom compatible endpoint.',
+          'Switched to OpenAI-compatible provider.\n' +
+          'Using the default OpenAI API base URL. Set OPENAI_BASE_URL only if you want a custom compatible endpoint.',
       }
     }
   }
@@ -108,6 +135,7 @@ const call: LocalCommandCall = async (args, context) => {
     const hasKey = !!(mergedEnv.GROK_API_KEY || mergedEnv.XAI_API_KEY)
     if (!hasKey) {
       updateSettingsForSource('userSettings', { modelType: 'grok' })
+      syncSessionProvider('grok')
       return {
         type: 'text',
         value: `Switched to Grok provider.\nWarning: Missing env var: GROK_API_KEY (or XAI_API_KEY)\nConfigure it via settings.json env or set manually.`,
@@ -122,6 +150,7 @@ const call: LocalCommandCall = async (args, context) => {
     // GEMINI_BASE_URL is optional (has default)
     if (!hasKey) {
       updateSettingsForSource('userSettings', { modelType: 'gemini' })
+      syncSessionProvider('gemini')
       return {
         type: 'text',
         value: `Switched to Gemini provider.\nWarning: Missing env var: GEMINI_API_KEY\nConfigure it via /login or set manually.`,
@@ -132,7 +161,12 @@ const call: LocalCommandCall = async (args, context) => {
   // Handle different provider types
   // - 'anthropic', 'openai', 'gemini' are stored in settings.json (persistent)
   // - 'bedrock', 'vertex', 'foundry' are env-only (do NOT touch settings.json)
-  if (arg === 'anthropic' || arg === 'openai' || arg === 'gemini' || arg === 'grok') {
+  if (
+    arg === 'anthropic' ||
+    arg === 'openai' ||
+    arg === 'gemini' ||
+    arg === 'grok'
+  ) {
     // Clear any cloud provider env vars to avoid conflicts
     delete process.env.CLAUDE_CODE_USE_BEDROCK
     delete process.env.CLAUDE_CODE_USE_VERTEX
@@ -144,6 +178,7 @@ const call: LocalCommandCall = async (args, context) => {
     updateSettingsForSource('userSettings', { modelType: arg })
     // Ensure settings.env gets applied to process.env
     applyConfigEnvironmentVariables()
+    syncSessionProvider(arg)
     return { type: 'text', value: `API provider set to ${arg}.` }
   } else {
     // Cloud providers: set env vars only, do NOT touch settings.json
@@ -166,9 +201,10 @@ const provider = {
   type: 'local',
   name: 'provider',
   description:
-    'Switch API provider (anthropic/openai/gemini/grok/bedrock/vertex/foundry)',
+    'Switch API provider (anthropic/openai/codex-oauth/gemini/grok/bedrock/vertex/foundry)',
   aliases: ['api'],
-  argumentHint: '[anthropic|openai|gemini|grok|bedrock|vertex|foundry|unset]',
+  argumentHint:
+    '[anthropic|openai|codex-oauth|gemini|grok|bedrock|vertex|foundry|unset]',
   supportsNonInteractive: true,
   load: () => Promise.resolve({ call }),
 } satisfies Command

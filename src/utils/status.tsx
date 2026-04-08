@@ -369,6 +369,12 @@ export function buildAPIProviderProperties(): Property[] {
         value: String(codexConfig.model_context_window),
       })
     }
+    if (codexConfig.model_auto_compact_token_limit !== undefined) {
+      properties.push({
+        label: 'Auto-compact token limit override',
+        value: String(codexConfig.model_auto_compact_token_limit),
+      })
+    }
     return properties
   }
 

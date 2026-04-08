@@ -34,10 +34,9 @@ import { isFastModeEnabled } from '../../utils/fastMode.js'
 import { getUserMessageText } from '../../utils/messages.js'
 import { renderModelName } from '../../utils/model/model.js'
 import {
-  getModelProviderKind,
   getModelProviderLabel,
-  isCodexProviderEnabled,
 } from '../../utils/model/providerMode.js'
+import { getAPIProviderForModelType } from '../../utils/model/providers.js'
 import { ProgressBar } from '../design-system/ProgressBar.js'
 
 type Props = {
@@ -93,7 +92,8 @@ export function PromptInputHud({
   isLoading,
   hidden = false,
 }: Props): React.ReactNode {
-  const codexEnabled = isCodexProviderEnabled()
+  const modelType = useAppState(s => s.settings.modelType)
+  const codexEnabled = getAPIProviderForModelType(modelType) === 'codex'
   const isFullscreen = isFullscreenEnvEnabled()
   const sessionId = getSessionId()
   const { columns } = useTerminalSize()
@@ -169,10 +169,13 @@ export function PromptInputHud({
     () => getHudTurnMetrics(messages, isLoading, nowMs),
     [messages, isLoading, nowMs],
   )
-  const requestedTier = useMemo(() => getRequestedServiceTierLabel(fastMode), [fastMode])
+  const requestedTier = useMemo(
+    () => getRequestedServiceTierLabel(codexEnabled, fastMode),
+    [codexEnabled, fastMode],
+  )
   const actualTier = useMemo(
-    () => getActualServiceTierLabel(messages, isLoading),
-    [messages, isLoading],
+    () => getActualServiceTierLabel(messages, isLoading, requestedTier),
+    [messages, isLoading, requestedTier],
   )
   const fastEnabledForDisplay = requestedTier === 'fast'
 
@@ -553,9 +556,10 @@ function getRecentToolStats(messages: Message[]): RecentToolStat[] {
 }
 
 function getRequestedServiceTierLabel(
+  codexEnabled: boolean,
   fastMode: boolean,
 ): 'default' | 'fast' | 'flex' {
-  if (getModelProviderKind() !== 'codex') {
+  if (!codexEnabled) {
     return 'default'
   }
 
@@ -572,7 +576,8 @@ function getRequestedServiceTierLabel(
 function getActualServiceTierLabel(
   messages: Message[],
   isLoading: boolean,
-): 'standard' | 'priority' | 'flex' | null {
+  requestedTier: 'default' | 'fast' | 'flex',
+): 'standard' | 'priority' | 'flex' | 'unknown' | null {
   const currentTurnStart = getLastPromptTurnIndex(messages)
   const latestCurrentTurn = getLatestAssistantUsageServiceTier(
     messages,
@@ -580,10 +585,29 @@ function getActualServiceTierLabel(
   )
 
   if (isLoading) {
-    return latestCurrentTurn
+    return latestCurrentTurn ?? getPendingServiceTierLabel(requestedTier)
   }
 
-  return latestCurrentTurn ?? getLatestAssistantUsageServiceTier(messages, 0)
+  const latestCompletedTier =
+    latestCurrentTurn ?? getLatestAssistantUsageServiceTier(messages, 0)
+
+  if (latestCompletedTier) {
+    return latestCompletedTier
+  }
+
+  return requestedTier === 'default' ? null : 'unknown'
+}
+
+function getPendingServiceTierLabel(
+  requestedTier: 'default' | 'fast' | 'flex',
+): 'standard' | 'priority' | 'flex' {
+  if (requestedTier === 'fast') {
+    return 'priority'
+  }
+  if (requestedTier === 'flex') {
+    return 'flex'
+  }
+  return 'standard'
 }
 
 function getHudTurnMetrics(

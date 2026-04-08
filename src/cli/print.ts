@@ -519,7 +519,8 @@ export async function runHeadless(
     if (isFastModeEnabled()) {
       setAppState(prev => {
         const s = prev.settings as Record<string, unknown>
-        const fastMode = s.fastMode === true && !s.fastModePerSessionOptIn
+        const fastMode =
+          s.fastModePerSessionOptIn === true ? false : s.fastMode !== false
         return { ...prev, fastMode }
       })
     }

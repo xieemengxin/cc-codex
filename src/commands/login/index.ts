@@ -1,15 +1,17 @@
 import type { Command } from '../../commands.js'
 import { hasAnthropicApiKeyAuth } from '../../utils/auth.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
-import { getModelProviderKind } from '../../utils/model/providerMode.js'
+import { getAPIProvider } from '../../utils/model/providers.js'
 
 export default () =>
   ({
     type: 'local-jsx',
     name: 'login',
     description:
-      getModelProviderKind() === 'codex'
+      getAPIProvider() === 'codex'
         ? 'Sign in with your Codex account'
+        : getAPIProvider() === 'openai'
+          ? 'Configure your OpenAI-compatible provider'
         : hasAnthropicApiKeyAuth()
           ? 'Switch Anthropic accounts'
           : 'Sign in with your Anthropic account',

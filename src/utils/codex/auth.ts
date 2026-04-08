@@ -145,18 +145,18 @@ export function getCodexAuthMode(
 export function getCodexBearerToken(
   auth: CodexAuthJson | null = getCodexAuth(),
 ): string | null {
-  const envToken =
-    process.env.CODEX_API_KEY?.trim() || process.env.OPENAI_API_KEY?.trim()
+  const envToken = process.env.CODEX_API_KEY?.trim()
   if (envToken) {
     return envToken
+  }
+  const accessToken = getStoredCodexTokens(auth)?.access_token
+  if (typeof accessToken === 'string' && accessToken.length > 0) {
+    return accessToken
   }
   if (auth?.OPENAI_API_KEY) {
     return auth.OPENAI_API_KEY
   }
-  const accessToken = getStoredCodexTokens(auth)?.access_token
-  return typeof accessToken === 'string' && accessToken.length > 0
-    ? accessToken
-    : null
+  return null
 }
 
 export function getCodexAccountId(
@@ -304,8 +304,7 @@ export function getCodexAccountStatus(): CodexAccountStatus {
   const auth = getCodexAuth()
   const idTokenInfo = getCodexIdTokenInfo(auth)
   const token = getCodexBearerToken(auth)
-  const envApiKey =
-    process.env.CODEX_API_KEY?.trim() || process.env.OPENAI_API_KEY?.trim()
+  const envApiKey = process.env.CODEX_API_KEY?.trim()
 
   return {
     loggedIn: token !== null,
@@ -316,9 +315,7 @@ export function getCodexAccountStatus(): CodexAccountStatus {
     planType: idTokenInfo?.chatgptPlanType ?? null,
     apiKeySource:
       envApiKey
-        ? envApiKey === process.env.CODEX_API_KEY?.trim()
-          ? 'env:CODEX_API_KEY'
-          : 'env:OPENAI_API_KEY'
+        ? 'env:CODEX_API_KEY'
         : auth?.OPENAI_API_KEY != null
         ? 'auth.json:OPENAI_API_KEY'
         : null,

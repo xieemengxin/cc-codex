@@ -14,7 +14,6 @@ import { getEmptyToolPermissionContext } from '../../../Tool.js'
 import { logForDebugging } from '../../../utils/debug.js'
 import { addToTotalSessionCost } from '../../../cost-tracker.js'
 import { calculateUSDCost } from '../../../utils/modelCost.js'
-import { getCodexProviderConfigValue } from '../../../utils/codex/config.js'
 import { appendProviderPayloadDump } from '../dumpPrompts.js'
 import type { Options } from '../claude.js'
 import { randomUUID } from 'crypto'
@@ -28,14 +27,6 @@ function resolveOpenAIServiceTier(
 ): 'priority' | 'flex' | undefined {
   if (options.fastMode) {
     return 'priority'
-  }
-
-  const configured = getCodexProviderConfigValue('service_tier')
-  if (configured === 'fast') {
-    return 'priority'
-  }
-  if (configured === 'flex') {
-    return 'flex'
   }
 
   return undefined

@@ -12,7 +12,10 @@ import {
   getCodexBearerToken,
   refreshCodexAuthIfNeeded,
 } from '../utils/codex/auth.js'
-import { getAPIProvider } from '../utils/model/providers.js'
+import {
+  getAPIProvider,
+  getAPIProviderForModelType,
+} from '../utils/model/providers.js'
 
 export type VerificationStatus =
   | 'loading'
@@ -31,8 +34,13 @@ export function useApiKeyVerification(): ApiKeyVerificationResult {
   const authVersion = useAppState(s => s.authVersion)
   const modelType = useAppState(s => s.settings.modelType)
   const [status, setStatus] = useState<VerificationStatus>(() => {
-    if (getAPIProvider() === 'openai') {
+    const provider =
+      getAPIProviderForModelType(modelType) ?? getAPIProvider()
+    if (provider === 'codex') {
       return getCodexBearerToken() ? 'valid' : 'missing'
+    }
+    if (provider === 'openai') {
+      return process.env.OPENAI_API_KEY?.trim() ? 'valid' : 'missing'
     }
     if (!isAnthropicAuthEnabled() || isClaudeAISubscriber()) {
       return 'valid'
@@ -52,16 +60,24 @@ export function useApiKeyVerification(): ApiKeyVerificationResult {
   const [error, setError] = useState<Error | null>(null)
 
   const verify = useCallback(async (): Promise<void> => {
-    if (getAPIProvider() === 'openai') {
+    const provider =
+      getAPIProviderForModelType(modelType) ?? getAPIProvider()
+    if (provider === 'codex') {
       try {
         await refreshCodexAuthIfNeeded()
         setStatus(getCodexBearerToken() ? 'valid' : 'missing')
+        setError(null)
         return
       } catch (error) {
         setError(error as Error)
         setStatus('error')
         return
       }
+    }
+    if (provider === 'openai') {
+      setStatus(process.env.OPENAI_API_KEY?.trim() ? 'valid' : 'missing')
+      setError(null)
+      return
     }
 
     if (!isAnthropicAuthEnabled() || isClaudeAISubscriber()) {
@@ -97,7 +113,7 @@ export function useApiKeyVerification(): ApiKeyVerificationResult {
       setStatus(newStatus)
       return
     }
-  }, [])
+  }, [modelType])
 
   useEffect(() => {
     void verify()

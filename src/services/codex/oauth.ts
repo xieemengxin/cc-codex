@@ -80,7 +80,7 @@ function handleCodexSuccessPage(res: Parameters<
 >[0]): void {
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
   res.end(
-    '<!doctype html><html><body><h1>Codex login complete</h1><p>You can return to Claude Code.</p></body></html>',
+    '<!doctype html><html><body><h1>Authorization received</h1><p>Claude Code is finalizing your Codex login. You can return to the terminal.</p></body></html>',
   )
 }
 
@@ -123,6 +123,11 @@ export class CodexOAuthService {
       },
     )
 
+    this.authCodeListener.handleSuccessRedirect(
+      [],
+      handleCodexSuccessPage,
+    )
+
     try {
       const tokens = await exchangeCodexCodeForTokens({
         authorizationCode,
@@ -138,11 +143,6 @@ export class CodexOAuthService {
       if (result.error) {
         throw result.error
       }
-
-      this.authCodeListener.handleSuccessRedirect(
-        [],
-        handleCodexSuccessPage,
-      )
     } catch (error) {
       this.authCodeListener.handleErrorRedirect()
       throw error

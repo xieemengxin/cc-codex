@@ -30,6 +30,10 @@ import { formatDuration } from '../../utils/format.js'
 import { setEnvHookNotifier } from '../../utils/hooks/fileChangedWatcher.js'
 import { toIDEDisplayName } from '../../utils/ide.js'
 import { getMessagesAfterCompactBoundary } from '../../utils/messages.js'
+import {
+  getAPIProvider,
+  getAPIProviderForModelType,
+} from '../../utils/model/providers.js'
 import { tokenCountFromLastAPIResponse } from '../../utils/tokens.js'
 import { AutoUpdaterWrapper } from '../AutoUpdaterWrapper.js'
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js'
@@ -86,6 +90,7 @@ export function Notifications({
   // re-reads settings.json on every call, so another session's /model write
   // would leak into this session's display (anthropics/claude-code#37596).
   const mainLoopModel = useMainLoopModel()
+  const modelType = useAppState(s => s.settings.modelType)
   const isShowingCompactMessage = calculateTokenWarningState(
     tokenUsage,
     mainLoopModel,
@@ -94,6 +99,8 @@ export function Notifications({
   const notifications = useAppState(s => s.notifications)
   const { addNotification, removeNotification } = useNotifications()
   const claudeAiLimits = useClaudeAiLimits()
+  const currentProvider =
+    getAPIProviderForModelType(modelType) ?? getAPIProvider()
 
   // Register env hook notifier for CwdChanged/FileChanged feedback
   useEffect(() => {
@@ -318,7 +325,11 @@ function NotificationContent({
           <Text color="error" wrap="truncate">
             {isEnvTruthy(process.env.CLAUDE_CODE_REMOTE)
               ? 'Authentication error · Try again'
-              : 'Not logged in · Run /login'}
+              : currentProvider === 'codex'
+                ? 'Codex OAuth not connected · Run /login'
+                : currentProvider === 'openai'
+                  ? 'OpenAI API key missing · Run /login'
+                  : 'Not logged in · Run /login'}
           </Text>
         </Box>
       )}

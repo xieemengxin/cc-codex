@@ -162,9 +162,6 @@ export function getFastModeModel(): string {
 }
 
 export function getInitialFastModeSetting(model: ModelSetting): boolean {
-  if (isCodexProviderEnabled()) {
-    return getCodexProviderConfigValue('service_tier') === 'fast'
-  }
   if (!isFastModeEnabled()) {
     return false
   }
@@ -174,12 +171,17 @@ export function getInitialFastModeSetting(model: ModelSetting): boolean {
   if (!isFastModeSupportedByModel(model)) {
     return false
   }
+
+  if (isCodexProviderEnabled()) {
+    return getCodexProviderConfigValue('service_tier') !== 'flex'
+  }
+
   const settings = getInitialSettings()
   // If per-session opt-in is required, fast mode starts off each session
   if (settings.fastModePerSessionOptIn) {
     return false
   }
-  return settings.fastMode === true
+  return settings.fastMode !== false
 }
 
 export function isFastModeSupportedByModel(
@@ -358,13 +360,13 @@ export function getFastModeState(
 export function persistFastModePreference(enable: boolean): void {
   if (isCodexProviderEnabled()) {
     updateCodexProviderConfig({
-      service_tier: enable ? 'fast' : undefined,
+      service_tier: enable ? 'fast' : 'flex',
     })
     return
   }
 
   updateSettingsForSource('userSettings', {
-    fastMode: enable ? true : undefined,
+    fastMode: enable ? true : false,
   })
 }
 

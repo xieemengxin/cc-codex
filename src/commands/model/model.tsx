@@ -32,6 +32,10 @@ import { isCodexProviderEnabled } from '../../utils/model/providerMode.js'
 import { validateModel } from '../../utils/model/validateModel.js'
 import { updateCodexProviderConfig } from '../../utils/codex/config.js'
 
+function shouldDefaultFastModeOn(isFastMode: boolean, model: string | null): boolean {
+  return !isFastMode && isFastModeEnabled() && isFastModeAvailable() && isFastModeSupportedByModel(model)
+}
+
 function ModelPickerWrapper({
   onDone,
 }: {
@@ -79,7 +83,8 @@ function ModelPickerWrapper({
       message += ` with ${chalk.bold(effort)} effort`
     }
 
-    // Turn off fast mode if switching to unsupported model
+    // Keep fast mode aligned with the selected model. Supported models default
+    // to fast unless the user explicitly turned it off in settings/config.
     let wasFastModeToggledOn = undefined
     if (isFastModeEnabled()) {
       clearFastModeCooldown()
@@ -90,6 +95,13 @@ function ModelPickerWrapper({
         }))
         wasFastModeToggledOn = false
         // Do not update fast mode in settings since this is an automatic downgrade
+      } else if (shouldDefaultFastModeOn(isFastMode, model)) {
+        setAppState(prev => ({
+          ...prev,
+          fastMode: true,
+        }))
+        message += ` · Fast mode ON`
+        wasFastModeToggledOn = true
       } else if (
         isFastModeSupportedByModel(model) &&
         isFastModeAvailable() &&
@@ -232,6 +244,13 @@ function SetModelAndClose({
           }))
           wasFastModeToggledOn = false
           // Do not update fast mode in settings since this is an automatic downgrade
+        } else if (shouldDefaultFastModeOn(isFastMode, modelValue)) {
+          setAppState(prev => ({
+            ...prev,
+            fastMode: true,
+          }))
+          message += ` · Fast mode ON`
+          wasFastModeToggledOn = true
         } else if (isFastModeSupportedByModel(modelValue) && isFastMode) {
           message += ` · Fast mode ON`
           wasFastModeToggledOn = true

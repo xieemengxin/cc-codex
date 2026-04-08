@@ -17,6 +17,7 @@ import { refreshPolicyLimits } from '../../services/policyLimits/index.js'
 import { refreshRemoteManagedSettings } from '../../services/remoteManagedSettings/index.js'
 import type { LocalJSXCommandOnDone } from '../../types/command.js'
 import { stripSignatureBlocks } from '../../utils/messages.js'
+import { getAPIProvider } from '../../utils/model/providers.js'
 import {
   getModelProviderKind,
   isCodexProviderEnabled,
@@ -83,7 +84,11 @@ export async function call(
         }
         onDone(
           success
-            ? `${getModelProviderKind() === 'codex' ? 'Codex' : 'Anthropic'} login successful`
+            ? getAPIProvider() === 'codex'
+              ? 'Codex login successful'
+              : getAPIProvider() === 'openai'
+                ? 'OpenAI provider configured'
+                : 'Anthropic login successful'
             : 'Login interrupted',
         )
       }}
@@ -97,10 +102,17 @@ export function Login(props: {
 }): React.ReactNode {
   const mainLoopModel = useMainLoopModel()
   const provider = getModelProviderKind()
+  const apiProvider = getAPIProvider()
 
   return (
     <Dialog
-      title={provider === 'codex' ? 'Codex Login' : 'Login'}
+      title={
+        provider === 'codex'
+          ? 'Codex Login'
+          : apiProvider === 'openai'
+            ? 'OpenAI Provider Setup'
+            : 'Login'
+      }
       onCancel={() => props.onDone(false, mainLoopModel)}
       color="permission"
       inputGuide={exitState =>
@@ -121,7 +133,7 @@ export function Login(props: {
           onDone={() => props.onDone(true, mainLoopModel)}
           startingMessage={
             props.startingMessage ??
-            'This will open the ChatGPT/Codex login flow for the OpenAI/Codex provider.'
+            'This will open the ChatGPT/Codex login flow for the Codex OAuth provider.'
           }
         />
       ) : (
