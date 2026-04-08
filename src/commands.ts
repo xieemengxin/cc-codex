@@ -15,6 +15,7 @@ import commitPushPr from './commands/commit-push-pr.js'
 import compact from './commands/compact/index.js'
 import config from './commands/config/index.js'
 import { context, contextNonInteractive } from './commands/context/index.js'
+import contextWindow from './commands/context-window/index.js'
 import cost from './commands/cost/index.js'
 import diff from './commands/diff/index.js'
 import ctx_viz from './commands/ctx_viz/index.js'
@@ -170,6 +171,7 @@ import {
 import memoize from 'lodash-es/memoize.js'
 import { isUsing3PServices, isClaudeAISubscriber } from './utils/auth.js'
 import { isFirstPartyAnthropicBaseUrl } from './utils/model/providers.js'
+import { isCodexProviderEnabled } from './utils/model/providerMode.js'
 import env from './commands/env/index.js'
 import exit from './commands/exit/index.js'
 import exportCommand from './commands/export/index.js'
@@ -268,6 +270,7 @@ const COMMANDS = memoize((): Command[] => [
   compact,
   config,
   copy,
+  contextWindow,
   desktop,
   context,
   contextNonInteractive,
@@ -433,6 +436,9 @@ export function meetsAvailabilityRequirement(cmd: Command): boolean {
           isFirstPartyAnthropicBaseUrl()
         )
           return true
+        break
+      case 'codex':
+        if (isCodexProviderEnabled()) return true
         break
       default: {
         const _exhaustive: never = a

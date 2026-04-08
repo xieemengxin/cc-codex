@@ -14,6 +14,11 @@ import {
   isEffortLevel,
   toPersistableEffort,
 } from '../../utils/effort.js'
+import {
+  type CodexReasoningEffort,
+  updateCodexProviderConfig,
+} from '../../utils/codex/config.js'
+import { isCodexProviderEnabled } from '../../utils/model/providerMode.js'
 import { updateSettingsForSource } from '../../utils/settings/settings.js'
 
 const COMMON_HELP_ARGS = ['help', '-h', '--help']
@@ -24,14 +29,25 @@ type EffortCommandResult = {
 }
 
 function setEffortValue(effortValue: EffortValue): EffortCommandResult {
-  const persistable = toPersistableEffort(effortValue)
-  if (persistable !== undefined) {
-    const result = updateSettingsForSource('userSettings', {
-      effortLevel: persistable,
+  if (isCodexProviderEnabled()) {
+    const result = updateCodexProviderConfig({
+      model_reasoning_effort: effortValue as CodexReasoningEffort,
     })
     if (result.error) {
       return {
         message: `Failed to set effort level: ${result.error.message}`,
+      }
+    }
+  } else {
+    const persistable = toPersistableEffort(effortValue)
+    if (persistable !== undefined) {
+      const result = updateSettingsForSource('userSettings', {
+        effortLevel: persistable,
+      })
+      if (result.error) {
+        return {
+          message: `Failed to set effort level: ${result.error.message}`,
+        }
       }
     }
   }
@@ -44,7 +60,12 @@ function setEffortValue(effortValue: EffortValue): EffortCommandResult {
   // conflicts — if env matches what the user just asked for, the outcome is
   // the same, so "Set effort to X" is true and the note is noise.
   const envOverride = getEffortEnvOverride()
-  if (envOverride !== undefined && envOverride !== effortValue) {
+  const persistable = toPersistableEffort(effortValue)
+  if (
+    !isCodexProviderEnabled() &&
+    envOverride !== undefined &&
+    envOverride !== effortValue
+  ) {
     const envRaw = process.env.CLAUDE_CODE_EFFORT_LEVEL
     if (persistable === undefined) {
       return {
@@ -59,7 +80,10 @@ function setEffortValue(effortValue: EffortValue): EffortCommandResult {
   }
 
   const description = getEffortValueDescription(effortValue)
-  const suffix = persistable !== undefined ? '' : ' (this session only)'
+  const suffix =
+    isCodexProviderEnabled() || persistable !== undefined
+      ? ''
+      : ' (this session only)'
   return {
     message: `Set effort level to ${effortValue}${suffix}: ${description}`,
     effortUpdate: { value: effortValue },
@@ -84,9 +108,13 @@ export function showCurrentEffort(
 }
 
 function unsetEffortLevel(): EffortCommandResult {
-  const result = updateSettingsForSource('userSettings', {
-    effortLevel: undefined,
-  })
+  const result = isCodexProviderEnabled()
+    ? updateCodexProviderConfig({
+        model_reasoning_effort: undefined,
+      })
+    : updateSettingsForSource('userSettings', {
+        effortLevel: undefined,
+      })
   if (result.error) {
     return {
       message: `Failed to set effort level: ${result.error.message}`,
@@ -120,7 +148,9 @@ export function executeEffort(args: string): EffortCommandResult {
 
   if (!isEffortLevel(normalized)) {
     return {
-      message: `Invalid argument: ${args}. Valid options are: low, medium, high, max, auto`,
+      message: isCodexProviderEnabled()
+        ? `Invalid argument: ${args}. Valid options are: none, minimal, low, medium, high, xhigh, auto`
+        : `Invalid argument: ${args}. Valid options are: low, medium, high, max, auto`,
     }
   }
 
@@ -169,7 +199,9 @@ export async function call(
 
   if (COMMON_HELP_ARGS.includes(args)) {
     onDone(
-      'Usage: /effort [low|medium|high|max|auto]\n\nEffort levels:\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- max: Maximum capability with deepest reasoning (Opus 4.6 only)\n- auto: Use the default effort level for your model',
+      isCodexProviderEnabled()
+        ? 'Usage: /effort [none|minimal|low|medium|high|xhigh|auto]\n\nEffort levels:\n- none: Disable reasoning budget\n- minimal: Small reasoning budget\n- low: Quick, lightweight reasoning\n- medium: Balanced reasoning\n- high: Deep reasoning\n- xhigh: Maximum Codex reasoning\n- auto: Use the default effort level for your model'
+        : 'Usage: /effort [low|medium|high|max|auto]\n\nEffort levels:\n- low: Quick, straightforward implementation\n- medium: Balanced approach with standard testing\n- high: Comprehensive implementation with extensive testing\n- max: Maximum capability with deepest reasoning (Opus 4.6 only)\n- auto: Use the default effort level for your model',
     )
     return
   }

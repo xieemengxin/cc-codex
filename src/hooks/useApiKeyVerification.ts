@@ -1,12 +1,18 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { getIsNonInteractiveSession } from '../bootstrap/state.js'
 import { verifyApiKey } from '../services/api/claude.js'
+import { useAppState } from '../state/AppState.js'
 import {
   getAnthropicApiKeyWithSource,
   getApiKeyFromApiKeyHelper,
   isAnthropicAuthEnabled,
   isClaudeAISubscriber,
 } from '../utils/auth.js'
+import {
+  getCodexBearerToken,
+  refreshCodexAuthIfNeeded,
+} from '../utils/codex/auth.js'
+import { getAPIProvider } from '../utils/model/providers.js'
 
 export type VerificationStatus =
   | 'loading'
@@ -22,7 +28,12 @@ export type ApiKeyVerificationResult = {
 }
 
 export function useApiKeyVerification(): ApiKeyVerificationResult {
+  const authVersion = useAppState(s => s.authVersion)
+  const modelType = useAppState(s => s.settings.modelType)
   const [status, setStatus] = useState<VerificationStatus>(() => {
+    if (getAPIProvider() === 'openai') {
+      return getCodexBearerToken() ? 'valid' : 'missing'
+    }
     if (!isAnthropicAuthEnabled() || isClaudeAISubscriber()) {
       return 'valid'
     }
@@ -41,6 +52,18 @@ export function useApiKeyVerification(): ApiKeyVerificationResult {
   const [error, setError] = useState<Error | null>(null)
 
   const verify = useCallback(async (): Promise<void> => {
+    if (getAPIProvider() === 'openai') {
+      try {
+        await refreshCodexAuthIfNeeded()
+        setStatus(getCodexBearerToken() ? 'valid' : 'missing')
+        return
+      } catch (error) {
+        setError(error as Error)
+        setStatus('error')
+        return
+      }
+    }
+
     if (!isAnthropicAuthEnabled() || isClaudeAISubscriber()) {
       setStatus('valid')
       return
@@ -75,6 +98,10 @@ export function useApiKeyVerification(): ApiKeyVerificationResult {
       return
     }
   }, [])
+
+  useEffect(() => {
+    void verify()
+  }, [authVersion, modelType, verify])
 
   return {
     status,

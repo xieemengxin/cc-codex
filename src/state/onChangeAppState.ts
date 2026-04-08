@@ -5,9 +5,11 @@ import {
   clearGcpCredentialsCache,
 } from '../utils/auth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js'
+import { updateCodexProviderConfig } from '../utils/codex/config.js'
 import { toError } from '../utils/errors.js'
 import { logError } from '../utils/log.js'
 import { applyConfigEnvironmentVariables } from '../utils/managedEnv.js'
+import { isCodexProviderEnabled } from '../utils/model/providerMode.js'
 import {
   permissionModeFromString,
   toExternalPermissionMode,
@@ -96,8 +98,12 @@ export function onChangeAppState({
     newState.mainLoopModel !== oldState.mainLoopModel &&
     newState.mainLoopModel === null
   ) {
-    // Remove from settings
-    updateSettingsForSource('userSettings', { model: undefined })
+    if (isCodexProviderEnabled()) {
+      updateCodexProviderConfig({ model: undefined })
+    } else {
+      // Remove from settings
+      updateSettingsForSource('userSettings', { model: undefined })
+    }
     setMainLoopModelOverride(null)
   }
 
@@ -106,8 +112,12 @@ export function onChangeAppState({
     newState.mainLoopModel !== oldState.mainLoopModel &&
     newState.mainLoopModel !== null
   ) {
-    // Save to settings
-    updateSettingsForSource('userSettings', { model: newState.mainLoopModel })
+    if (isCodexProviderEnabled()) {
+      updateCodexProviderConfig({ model: newState.mainLoopModel })
+    } else {
+      // Save to settings
+      updateSettingsForSource('userSettings', { model: newState.mainLoopModel })
+    }
     setMainLoopModelOverride(newState.mainLoopModel)
   }
 

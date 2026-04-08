@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { anthropicToolsToOpenAI, anthropicToolChoiceToOpenAI } from '../convertTools.js'
+import {
+  anthropicToolsToOpenAI,
+  anthropicToolChoiceToOpenAI,
+  sanitizeJsonSchema,
+} from '../convertTools.js'
 
 describe('anthropicToolsToOpenAI', () => {
   test('converts basic tool', () => {
@@ -140,6 +144,39 @@ describe('anthropicToolsToOpenAI', () => {
     expect(anyOf[0]).toEqual({ enum: ['a'] })
     expect(anyOf[1]).toEqual({ enum: ['b'] })
     expect(anyOf[2]).toEqual({ type: 'string' })
+  })
+
+  test('normalizes strict schemas for OpenAI responses tools', () => {
+    const sanitized = sanitizeJsonSchema(
+      {
+        type: 'object',
+        properties: {
+          command: { type: 'string' },
+          timeout: { type: 'number' },
+          nested: {
+            type: 'object',
+            properties: {
+              path: { type: 'string' },
+              create: { type: 'boolean' },
+            },
+            required: ['path'],
+          },
+        },
+        required: ['command'],
+      },
+      { strict: true },
+    ) as any
+
+    expect(sanitized.required).toEqual(['command', 'timeout', 'nested'])
+    expect(sanitized.additionalProperties).toBe(false)
+    expect(sanitized.properties.timeout).toEqual({
+      type: ['number', 'null'],
+    })
+    expect(sanitized.properties.nested.required).toEqual(['path', 'create'])
+    expect(sanitized.properties.nested.additionalProperties).toBe(false)
+    expect(sanitized.properties.nested.properties.create).toEqual({
+      type: ['boolean', 'null'],
+    })
   })
 })
 

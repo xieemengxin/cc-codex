@@ -1,5 +1,6 @@
 import type { Command } from '../commands.js'
 import type { LocalCommandCall } from '../types/command.js'
+import { getCodexBearerToken } from '../utils/codex/auth.js'
 import { getAPIProvider } from '../utils/model/providers.js'
 import { updateSettingsForSource } from '../utils/settings/settings.js'
 import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
@@ -78,15 +79,25 @@ const call: LocalCommandCall = async (args, context) => {
   if (arg === 'openai') {
     const mergedEnv = getMergedEnv()
     const hasKey = !!mergedEnv.OPENAI_API_KEY
+    const hasOauth = !!getCodexBearerToken()
     const hasUrl = !!mergedEnv.OPENAI_BASE_URL
-    if (!hasKey || !hasUrl) {
+    if (!hasKey && !hasOauth) {
       updateSettingsForSource('userSettings', { modelType: 'openai' })
-      const missing = []
-      if (!hasKey) missing.push('OPENAI_API_KEY')
-      if (!hasUrl) missing.push('OPENAI_BASE_URL')
       return {
         type: 'text',
-        value: `Switched to OpenAI provider.\nWarning: Missing env vars: ${missing.join(', ')}\nConfigure them via /login or set manually.`,
+        value:
+          'Switched to OpenAI/Codex provider.\n' +
+          'Warning: No OpenAI API key or Codex OAuth session is configured.\n' +
+          'Configure it via /login or set OPENAI_API_KEY manually.',
+      }
+    }
+    if (!hasUrl) {
+      updateSettingsForSource('userSettings', { modelType: 'openai' })
+      return {
+        type: 'text',
+        value:
+          'Switched to OpenAI/Codex provider.\n' +
+          'Using the default official Codex base URL. Set OPENAI_BASE_URL only if you want a custom compatible endpoint.',
       }
     }
   }

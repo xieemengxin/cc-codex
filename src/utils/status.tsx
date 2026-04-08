@@ -27,7 +27,9 @@ import {
   getClaudeAiUserDefaultModelDescription,
   modelDisplayString,
 } from './model/model.js'
+import { getCodexProviderConfig } from './codex/config.js'
 import { getAPIProvider } from './model/providers.js'
+import { getModelProviderKind } from './model/providerMode.js'
 import { getMTLSConfig } from './mtls.js'
 import { checkInstall } from './nativeInstaller/index.js'
 import { getProxyUrl } from './proxy.js'
@@ -331,8 +333,44 @@ export function buildAccountProperties(): Property[] {
 
 export function buildAPIProviderProperties(): Property[] {
   const apiProvider = getAPIProvider()
+  const modelProviderKind = getModelProviderKind()
 
   const properties: Property[] = []
+
+  if (modelProviderKind === 'codex') {
+    const codexConfig = getCodexProviderConfig()
+    properties.push({
+      label: 'Model provider',
+      value: 'Codex',
+    })
+    properties.push({
+      label: 'Codex upstream provider',
+      value: codexConfig.model_provider ?? 'openai',
+    })
+    properties.push({
+      label: 'Service tier',
+      value: codexConfig.service_tier ?? 'default',
+    })
+    properties.push({
+      label: 'Reasoning effort',
+      value: codexConfig.model_reasoning_effort ?? 'default',
+    })
+    properties.push({
+      label: 'Reasoning summary',
+      value: codexConfig.model_reasoning_summary ?? 'default',
+    })
+    properties.push({
+      label: 'Verbosity',
+      value: codexConfig.model_verbosity ?? 'default',
+    })
+    if (codexConfig.model_context_window !== undefined) {
+      properties.push({
+        label: 'Context window override',
+        value: String(codexConfig.model_context_window),
+      })
+    }
+    return properties
+  }
 
   if (apiProvider !== 'firstParty') {
     const providerLabel = {

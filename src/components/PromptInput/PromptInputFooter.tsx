@@ -27,6 +27,7 @@ import {
   statusLineShouldDisplay,
 } from '../StatusLine.js'
 import { Notifications } from './Notifications.js'
+import { PromptInputHud } from './PromptInputHud.js'
 import { PromptInputFooterLeftSide } from './PromptInputFooterLeftSide.js'
 import {
   PromptInputFooterSuggestions,
@@ -182,6 +183,13 @@ function PromptInputFooter({
                 vimMode={vimMode}
               />
             )}
+          <PromptInputHud
+            messages={messages}
+            isLoading={isLoading}
+            hidden={
+              mode !== 'prompt' || exitMessage.show || isPasting || isSearching
+            }
+          />
           <PromptInputFooterLeftSide
             exitMessage={exitMessage}
             vimMode={vimMode}

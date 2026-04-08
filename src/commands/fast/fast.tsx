@@ -26,24 +26,25 @@ import {
   getFastModeUnavailableReason,
   isFastModeEnabled,
   isFastModeSupportedByModel,
+  persistFastModePreference,
   prefetchFastModeStatus,
 } from '../../utils/fastMode.js'
 import { formatDuration } from '../../utils/format.js'
 import { formatModelPricing, getOpus46CostTier } from '../../utils/modelCost.js'
-import { updateSettingsForSource } from '../../utils/settings/settings.js'
+import { isCodexProviderEnabled } from '../../utils/model/providerMode.js'
 
 function applyFastMode(
   enable: boolean,
   setAppState: (f: (prev: AppState) => AppState) => void,
 ): void {
   clearFastModeCooldown()
-  updateSettingsForSource('userSettings', {
-    fastMode: enable ? true : undefined,
-  })
+  persistFastModePreference(enable)
   if (enable) {
     setAppState(prev => {
       // Only switch model if current model doesn't support fast mode
-      const needsModelSwitch = !isFastModeSupportedByModel(prev.mainLoopModel)
+      const needsModelSwitch =
+        !isCodexProviderEnabled() &&
+        !isFastModeSupportedByModel(prev.mainLoopModel)
       return {
         ...prev,
         ...(needsModelSwitch
@@ -74,7 +75,9 @@ export function FastModePicker({
   const runtimeState = getFastModeRuntimeState()
   const isCooldown = runtimeState.status === 'cooldown'
   const isUnavailable = unavailableReason !== null
-  const pricing = formatModelPricing(getOpus46CostTier(true))
+  const pricing = isCodexProviderEnabled()
+    ? 'service_tier=fast'
+    : formatModelPricing(getOpus46CostTier(true))
 
   function handleConfirm(): void {
     if (isUnavailable) return
@@ -86,7 +89,7 @@ export function FastModePicker({
     })
     if (enableFastMode) {
       const fastIcon = getFastIconString(enableFastMode)
-      const modelUpdated = !isFastModeSupportedByModel(model)
+      const modelUpdated = !isCodexProviderEnabled() && !isFastModeSupportedByModel(model)
         ? ` · model set to ${FAST_MODE_MODEL_DISPLAY}`
         : ''
       onDone(`${fastIcon} Fast mode ON${modelUpdated} · ${pricing}`)

@@ -28,7 +28,9 @@ import {
   renderDefaultModelSetting,
 } from '../../utils/model/model.js'
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js'
+import { isCodexProviderEnabled } from '../../utils/model/providerMode.js'
 import { validateModel } from '../../utils/model/validateModel.js'
+import { updateCodexProviderConfig } from '../../utils/codex/config.js'
 
 function ModelPickerWrapper({
   onDone,
@@ -207,6 +209,12 @@ function SetModelAndClose({
     }
 
     function setModel(modelValue: string | null): void {
+      if (isCodexProviderEnabled()) {
+        updateCodexProviderConfig({
+          model: modelValue ?? undefined,
+        })
+      }
+
       setAppState(prev => ({
         ...prev,
         mainLoopModel: modelValue,

@@ -33,6 +33,12 @@ import {
 } from './model.js'
 import { has1mContext } from '../context.js'
 import { getGlobalConfig } from '../config.js'
+import {
+  getCodexDefaultModel,
+  getCodexModelDisplayName,
+  getCodexModelOptions,
+} from './codexCatalog.js'
+import { isCodexProviderEnabled } from './providerMode.js'
 
 // @[MODEL LAUNCH]: Update all the available and default model option strings below.
 
@@ -44,6 +50,16 @@ export type ModelOption = {
 }
 
 export function getDefaultOptionForUser(fastMode = false): ModelOption {
+  if (isCodexProviderEnabled()) {
+    const currentModel = getCodexModelDisplayName(getCodexDefaultModel())
+    return {
+      value: null,
+      label: 'Default (recommended)',
+      description: `Use the default Codex model (currently ${currentModel})`,
+      descriptionForModel: `Default Codex model (currently ${currentModel})`,
+    }
+  }
+
   if (process.env.USER_TYPE === 'ant') {
     const currentModel = renderDefaultModelSetting(
       getDefaultMainLoopModelSetting(),
@@ -514,6 +530,32 @@ function getKnownModelOption(model: string): ModelOption | null {
 }
 
 export function getModelOptions(fastMode = false): ModelOption[] {
+  if (isCodexProviderEnabled()) {
+    const options = getCodexModelOptions()
+    let customModel: ModelSetting = null
+    const currentMainLoopModel = getUserSpecifiedModelSetting()
+    const initialMainLoopModel = getInitialMainLoopModel()
+
+    if (currentMainLoopModel !== undefined && currentMainLoopModel !== null) {
+      customModel = currentMainLoopModel
+    } else if (initialMainLoopModel !== null) {
+      customModel = initialMainLoopModel
+    }
+
+    if (
+      customModel !== null &&
+      !options.some(option => option.value === customModel)
+    ) {
+      options.push({
+        value: customModel,
+        label: customModel,
+        description: 'Custom Codex model',
+      })
+    }
+
+    return options
+  }
+
   const options = getModelOptionsBase(fastMode)
 
   // Add the custom model from the ANTHROPIC_CUSTOM_MODEL_OPTION env var

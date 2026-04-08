@@ -2,9 +2,12 @@
 import { CONTEXT_1M_BETA_HEADER } from '../constants/betas.js'
 import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'
+import { getCodexProviderConfigValue } from './codex/config.js'
 import { getCanonicalName } from './model/model.js'
+import { getCodexModelDefinition } from './model/codexCatalog.js'
 import { resolveAntModel } from './model/antModels.js'
 import { getModelCapability } from './model/modelCapabilities.js'
+import { isCodexProviderEnabled } from './model/providerMode.js'
 
 // Model context window size (200k tokens for all models right now)
 export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
@@ -53,6 +56,14 @@ export function getContextWindowForModel(
   model: string,
   betas?: string[],
 ): number {
+  if (isCodexProviderEnabled()) {
+    return (
+      getCodexProviderConfigValue('model_context_window') ??
+      getCodexModelDefinition(model)?.contextWindow ??
+      272_000
+    )
+  }
+
   // Allow override via environment variable (ant-only)
   // This takes precedence over all other context window resolution, including 1M detection,
   // so users can cap the effective context window for local decisions (auto-compact, etc.)
@@ -151,6 +162,13 @@ export function getModelMaxOutputTokens(model: string): {
   default: number
   upperLimit: number
 } {
+  if (isCodexProviderEnabled()) {
+    return {
+      default: 32_000,
+      upperLimit: 128_000,
+    }
+  }
+
   let defaultTokens: number
   let upperLimit: number
 
@@ -219,4 +237,22 @@ export function getModelMaxOutputTokens(model: string): {
  */
 export function getMaxThinkingTokensForModel(model: string): number {
   return getModelMaxOutputTokens(model).upperLimit - 1
+}
+
+export function getAutoCompactTokenLimitForModel(
+  model: string,
+): number | undefined {
+  if (!isCodexProviderEnabled()) {
+    return undefined
+  }
+
+  const configured = getCodexProviderConfigValue('model_auto_compact_token_limit')
+  const modelDefault = getCodexModelDefinition(model)?.autoCompactTokenLimit
+  const contextLimit = getContextWindowForModel(model)
+  const maxAutoCompactLimit = Math.floor(contextLimit * 0.9)
+  const requested = configured ?? modelDefault
+
+  return requested !== undefined
+    ? Math.min(requested, maxAutoCompactLimit)
+    : undefined
 }

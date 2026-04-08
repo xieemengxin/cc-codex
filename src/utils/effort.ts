@@ -9,20 +9,45 @@ import { isEnvTruthy } from './envUtils.js'
 import type { EffortLevel } from 'src/entrypoints/sdk/runtimeTypes.js'
 import { resolveAntModel } from './model/antModels.js'
 import { getAntModelOverrideConfig } from './model/antModels.js'
+import { getCodexProviderConfigValue } from './codex/config.js'
+import { getCodexModelDefinition } from './model/codexCatalog.js'
+import { isCodexProviderEnabled } from './model/providerMode.js'
 
 export type { EffortLevel }
 
-export const EFFORT_LEVELS = [
+export const ANTHROPIC_EFFORT_LEVELS = [
   'low',
   'medium',
   'high',
   'max',
 ] as const satisfies readonly EffortLevel[]
 
+export const CODEX_EFFORT_LEVELS = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+] as const satisfies readonly EffortLevel[]
+
+export const EFFORT_LEVELS = [
+  ...ANTHROPIC_EFFORT_LEVELS,
+  ...CODEX_EFFORT_LEVELS.filter(
+    level => !(ANTHROPIC_EFFORT_LEVELS as readonly string[]).includes(level),
+  ),
+] as const satisfies readonly EffortLevel[]
+
 export type EffortValue = EffortLevel | number
 
 // @[MODEL LAUNCH]: Add the new model to the allowlist if it supports the effort parameter.
 export function modelSupportsEffort(model: string): boolean {
+  if (isCodexProviderEnabled()) {
+    return (
+      getCodexModelDefinition(model)?.supportedReasoningEfforts.length ?? 0
+    ) > 0
+  }
+
   const m = model.toLowerCase()
   if (isEnvTruthy(process.env.CLAUDE_CODE_ALWAYS_ENABLE_EFFORT)) {
     return true
@@ -53,6 +78,10 @@ export function modelSupportsEffort(model: string): boolean {
 // @[MODEL LAUNCH]: Add the new model to the allowlist if it supports 'max' effort.
 // Per API docs, 'max' is Opus 4.6 only for public models — other models return an error.
 export function modelSupportsMaxEffort(model: string): boolean {
+  if (isCodexProviderEnabled()) {
+    return false
+  }
+
   const supported3P = get3PModelCapabilityOverride(model, 'max_effort')
   if (supported3P !== undefined) {
     return supported3P
@@ -68,6 +97,21 @@ export function modelSupportsMaxEffort(model: string): boolean {
 
 export function isEffortLevel(value: string): value is EffortLevel {
   return (EFFORT_LEVELS as readonly string[]).includes(value)
+}
+
+export function getSupportedEffortLevelsForModel(
+  model: string,
+): EffortLevel[] {
+  if (isCodexProviderEnabled()) {
+    return (
+      getCodexModelDefinition(model)?.supportedReasoningEfforts ??
+      CODEX_EFFORT_LEVELS
+    ) as EffortLevel[]
+  }
+
+  return (modelSupportsMaxEffort(model)
+    ? ANTHROPIC_EFFORT_LEVELS
+    : ANTHROPIC_EFFORT_LEVELS.filter(level => level !== 'max')) as EffortLevel[]
 }
 
 export function parseEffortValue(value: unknown): EffortValue | undefined {
@@ -107,6 +151,10 @@ export function toPersistableEffort(
 }
 
 export function getInitialEffortSetting(): EffortLevel | undefined {
+  if (isCodexProviderEnabled()) {
+    return getCodexProviderConfigValue('model_reasoning_effort')
+  }
+
   // toPersistableEffort filters 'max' for non-ants on read, so a manually
   // edited settings.json doesn't leak session-scoped max into a fresh session.
   return toPersistableEffort(getInitialSettings().effortLevel)
@@ -225,12 +273,18 @@ export function convertEffortValueToLevel(value: EffortValue): EffortLevel {
  */
 export function getEffortLevelDescription(level: EffortLevel): string {
   switch (level) {
+    case 'none':
+      return 'Disable reasoning budget for the fastest response'
+    case 'minimal':
+      return 'Minimal reasoning budget with very low deliberation'
     case 'low':
       return 'Quick, straightforward implementation with minimal overhead'
     case 'medium':
       return 'Balanced approach with standard implementation and testing'
     case 'high':
       return 'Comprehensive implementation with extensive testing and documentation'
+    case 'xhigh':
+      return 'Maximum Codex reasoning depth for the hardest tasks'
     case 'max':
       return 'Maximum capability with deepest reasoning (Opus 4.6 only)'
   }
@@ -281,6 +335,14 @@ export function getOpusDefaultEffortConfig(): OpusDefaultEffortConfig {
 export function getDefaultEffortForModel(
   model: string,
 ): EffortValue | undefined {
+  if (isCodexProviderEnabled()) {
+    return (
+      getCodexProviderConfigValue('model_reasoning_effort') ??
+      getCodexModelDefinition(model)?.defaultReasoningEffort ??
+      'medium'
+    )
+  }
+
   if (process.env.USER_TYPE === 'ant') {
     const config = getAntModelOverrideConfig()
     const isDefaultModel =

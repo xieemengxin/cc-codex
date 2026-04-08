@@ -17,10 +17,10 @@ import { useKeybindings } from '../keybindings/useKeybinding.js'
 import { useAppState, useSetAppState } from '../state/AppState.js'
 import {
   convertEffortValueToLevel,
+  getSupportedEffortLevelsForModel,
   type EffortLevel,
   getDefaultEffortForModel,
   modelSupportsEffort,
-  modelSupportsMaxEffort,
   resolvePickerEffortPersistence,
   toPersistableEffort,
 } from '../utils/effort.js'
@@ -35,6 +35,12 @@ import {
   getSettingsForSource,
   updateSettingsForSource,
 } from '../utils/settings/settings.js'
+import {
+  type CodexReasoningEffort,
+  getCodexProviderConfigValue,
+  updateCodexProviderConfig,
+} from '../utils/codex/config.js'
+import { isCodexProviderEnabled } from '../utils/model/providerMode.js'
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js'
 import { Select } from './CustomSelect/index.js'
 import { Byline, KeyboardShortcutHint, Pane } from '@anthropic/ink'
@@ -136,17 +142,15 @@ export function ModelPicker({
     opt => opt.value === focusedValue,
   )?.label
   const focusedModel = resolveOptionModel(focusedValue)
-  const focusedSupportsEffort = focusedModel
-    ? modelSupportsEffort(focusedModel)
-    : false
-  const focusedSupportsMax = focusedModel
-    ? modelSupportsMaxEffort(focusedModel)
-    : false
+  const focusedEffortLevels = focusedModel
+    ? getSupportedEffortLevelsForModel(focusedModel)
+    : []
+  const focusedSupportsEffort = focusedEffortLevels.length > 0
   const focusedDefaultEffort = getDefaultEffortLevelForOption(focusedValue)
-  // Clamp display when 'max' is selected but the focused model doesn't support it.
-  // resolveAppliedEffort() does the same downgrade at API-send time.
   const displayEffort =
-    effort === 'max' && !focusedSupportsMax ? 'high' : effort
+    effort !== undefined && focusedEffortLevels.includes(effort)
+      ? effort
+      : focusedDefaultEffort
 
   const handleFocus = useCallback(
     (value: string) => {
@@ -166,12 +170,12 @@ export function ModelPicker({
         cycleEffortLevel(
           prev ?? focusedDefaultEffort,
           direction,
-          focusedSupportsMax,
+          focusedEffortLevels,
         ),
       )
       setHasToggledEffort(true)
     },
-    [focusedSupportsEffort, focusedSupportsMax, focusedDefaultEffort],
+    [focusedSupportsEffort, focusedEffortLevels, focusedDefaultEffort],
   )
 
   useKeybindings(
@@ -187,6 +191,18 @@ export function ModelPicker({
       effort:
         effort as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     })
+    const selectedModel = resolveOptionModel(value)
+    const selectedEffortLevels = selectedModel
+      ? getSupportedEffortLevelsForModel(selectedModel)
+      : []
+    const selectedSupportsEffort = selectedEffortLevels.length > 0
+    const defaultEffortLevel = getDefaultEffortLevelForOption(value)
+    const normalizedEffort = selectedSupportsEffort
+      ? effort !== undefined && selectedEffortLevels.includes(effort)
+        ? effort
+        : defaultEffortLevel
+      : undefined
+
     if (!skipSettingsWrite) {
       // Prior comes from userSettings on disk — NOT merged settings (which
       // includes project/policy layers that must not leak into the user's
@@ -194,22 +210,41 @@ export function ModelPicker({
       // includes session-ephemeral sources like --effort CLI flag).
       // See resolvePickerEffortPersistence JSDoc.
       const effortLevel = resolvePickerEffortPersistence(
-        effort,
-        getDefaultEffortLevelForOption(value),
+        normalizedEffort,
+        defaultEffortLevel,
         getSettingsForSource('userSettings')?.effortLevel,
         hasToggledEffort,
       )
-      const persistable = toPersistableEffort(effortLevel)
-      if (persistable !== undefined) {
-        updateSettingsForSource('userSettings', { effortLevel: persistable })
+      if (isCodexProviderEnabled()) {
+        const fastEnabled =
+          isFastMode === true ||
+          getCodexProviderConfigValue('service_tier') === 'fast'
+        const persistedEffort = selectedSupportsEffort
+          ? ((effortLevel ?? defaultEffortLevel) as
+              | CodexReasoningEffort
+              | undefined)
+          : undefined
+        updateCodexProviderConfig({
+          model: value === NO_PREFERENCE ? undefined : value,
+          model_reasoning_effort: persistedEffort,
+          service_tier: fastEnabled ? 'fast' : undefined,
+        })
+        setAppState(prev => ({
+          ...prev,
+          effortValue: persistedEffort,
+          fastMode: fastEnabled,
+        }))
+      } else {
+        const persistable = toPersistableEffort(effortLevel)
+        if (persistable !== undefined) {
+          updateSettingsForSource('userSettings', { effortLevel: persistable })
+        }
+        setAppState(prev => ({ ...prev, effortValue: effortLevel }))
       }
-      setAppState(prev => ({ ...prev, effortValue: effortLevel }))
     }
-
-    const selectedModel = resolveOptionModel(value)
     const selectedEffort =
       hasToggledEffort && selectedModel && modelSupportsEffort(selectedModel)
-        ? effort
+        ? normalizedEffort
         : undefined
     if (value === NO_PREFERENCE) {
       onSelect(null, selectedEffort)
@@ -227,7 +262,9 @@ export function ModelPicker({
           </Text>
           <Text dimColor>
             {headerText ??
-              'Switch between Claude models. Applies to this session and future Claude Code sessions. For other/previous model names, specify with --model.'}
+              (isCodexProviderEnabled()
+                ? 'Switch between Codex models. Applies to this session and persists to ~/.claude/codex/config.toml.'
+                : 'Switch between Claude models. Applies to this session and future Claude Code sessions. For other/previous model names, specify with --model.')}
           </Text>
           {sessionModel && (
             <Text dimColor>
@@ -276,16 +313,34 @@ export function ModelPicker({
           showFastModeNotice ? (
             <Box marginBottom={1}>
               <Text dimColor>
-                Fast mode is <Text bold>ON</Text> and available with{' '}
-                {FAST_MODE_MODEL_DISPLAY} only (/fast). Switching to other
-                models turn off fast mode.
+                {isCodexProviderEnabled() ? (
+                  <>
+                    Fast mode is <Text bold>ON</Text> and requests the Codex
+                    fast service tier (/fast).
+                  </>
+                ) : (
+                  <>
+                    Fast mode is <Text bold>ON</Text> and available with{' '}
+                    {FAST_MODE_MODEL_DISPLAY} only (/fast). Switching to other
+                    models turn off fast mode.
+                  </>
+                )}
               </Text>
             </Box>
           ) : isFastModeAvailable() && !isFastModeCooldown() ? (
             <Box marginBottom={1}>
               <Text dimColor>
-                Use <Text bold>/fast</Text> to turn on Fast mode (
-                {FAST_MODE_MODEL_DISPLAY} only).
+                {isCodexProviderEnabled() ? (
+                  <>
+                    Use <Text bold>/fast</Text> to request the Codex fast
+                    service tier.
+                  </>
+                ) : (
+                  <>
+                    Use <Text bold>/fast</Text> to turn on Fast mode (
+                    {FAST_MODE_MODEL_DISPLAY} only).
+                  </>
+                )}
               </Text>
             </Box>
           ) : null
@@ -341,15 +396,13 @@ function EffortLevelIndicator({
 function cycleEffortLevel(
   current: EffortLevel,
   direction: 'left' | 'right',
-  includeMax: boolean,
+  levels: EffortLevel[],
 ): EffortLevel {
-  const levels: EffortLevel[] = includeMax
-    ? ['low', 'medium', 'high', 'max']
-    : ['low', 'medium', 'high']
-  // If the current level isn't in the cycle (e.g. 'max' after switching to a
-  // non-Opus model), clamp to 'high'.
+  if (levels.length === 0) {
+    return current
+  }
   const idx = levels.indexOf(current)
-  const currentIndex = idx !== -1 ? idx : levels.indexOf('high')
+  const currentIndex = idx !== -1 ? idx : Math.max(levels.indexOf('high'), 0)
   if (direction === 'right') {
     return levels[(currentIndex + 1) % levels.length]!
   } else {
@@ -362,5 +415,7 @@ function getDefaultEffortLevelForOption(value?: string): EffortLevel {
   const defaultValue = getDefaultEffortForModel(resolved)
   return defaultValue !== undefined
     ? convertEffortValueToLevel(defaultValue)
-    : 'high'
+    : isCodexProviderEnabled()
+      ? 'medium'
+      : 'high'
 }

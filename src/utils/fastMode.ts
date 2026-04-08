@@ -27,6 +27,7 @@ import {
   parseUserSpecifiedModel,
 } from './model/model.js'
 import { getAPIProvider } from './model/providers.js'
+import { isCodexProviderEnabled } from './model/providerMode.js'
 import { isEssentialTrafficOnly } from './privacyLevel.js'
 import {
   getInitialSettings,
@@ -34,12 +35,19 @@ import {
   updateSettingsForSource,
 } from './settings/settings.js'
 import { createSignal } from './signal.js'
+import {
+  getCodexProviderConfigValue,
+  updateCodexProviderConfig,
+} from './codex/config.js'
 
 export function isFastModeEnabled(): boolean {
   return !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_FAST_MODE)
 }
 
 export function isFastModeAvailable(): boolean {
+  if (isCodexProviderEnabled()) {
+    return isFastModeEnabled()
+  }
   if (!isFastModeEnabled()) {
     return false
   }
@@ -70,6 +78,10 @@ function getDisabledReasonMessage(
 }
 
 export function getFastModeUnavailableReason(): string | null {
+  if (isCodexProviderEnabled()) {
+    return isFastModeEnabled() ? null : 'Fast mode is not available'
+  }
+
   if (!isFastModeEnabled()) {
     return 'Fast mode is not available'
   }
@@ -143,10 +155,16 @@ export function getFastModeUnavailableReason(): string | null {
 export const FAST_MODE_MODEL_DISPLAY = 'Opus 4.6'
 
 export function getFastModeModel(): string {
+  if (isCodexProviderEnabled()) {
+    return parseUserSpecifiedModel(getDefaultMainLoopModelSetting())
+  }
   return 'opus' + (isOpus1mMergeEnabled() ? '[1m]' : '')
 }
 
 export function getInitialFastModeSetting(model: ModelSetting): boolean {
+  if (isCodexProviderEnabled()) {
+    return getCodexProviderConfigValue('service_tier') === 'fast'
+  }
   if (!isFastModeEnabled()) {
     return false
   }
@@ -167,6 +185,9 @@ export function getInitialFastModeSetting(model: ModelSetting): boolean {
 export function isFastModeSupportedByModel(
   modelSetting: ModelSetting,
 ): boolean {
+  if (isCodexProviderEnabled()) {
+    return true
+  }
   if (!isFastModeEnabled()) {
     return false
   }
@@ -332,6 +353,19 @@ export function getFastModeState(
     return 'on'
   }
   return 'off'
+}
+
+export function persistFastModePreference(enable: boolean): void {
+  if (isCodexProviderEnabled()) {
+    updateCodexProviderConfig({
+      service_tier: enable ? 'fast' : undefined,
+    })
+    return
+  }
+
+  updateSettingsForSource('userSettings', {
+    fastMode: enable ? true : undefined,
+  })
 }
 
 // Disabled reason returned by the API. The API is the canonical source for why

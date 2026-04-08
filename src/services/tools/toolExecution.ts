@@ -612,7 +612,9 @@ async function checkPermissionsAndCallTool(
   ) => void,
 ): Promise<MessageUpdateLazy[]> {
   // Validate input types with zod (surprisingly, the model is not great at generating valid input)
-  const parsedInput = tool.inputSchema.safeParse(input)
+  const parsedInput = tool.inputSchema.safeParse(
+    stripNullObjectProperties(input),
+  )
   if (!parsedInput.success) {
     let errorContent = formatZodValidationError(tool.name, parsedInput.error)
 
@@ -1742,4 +1744,24 @@ async function checkPermissionsAndCallTool(
       toolUseContext.toolDecisions?.delete(toolUseID)
     }
   }
+}
+
+function stripNullObjectProperties<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map(item => stripNullObjectProperties(item)) as T
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value
+  }
+
+  const next: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (entry === null) {
+      continue
+    }
+    next[key] = stripNullObjectProperties(entry)
+  }
+
+  return next as T
 }

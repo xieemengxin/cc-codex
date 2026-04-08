@@ -14,6 +14,29 @@
 
 [文档在这里, 支持投稿 PR](https://ccb.agent-aura.top/) | [留影文档在这里](./Friends.md) | [Discord 群组](https://discord.gg/qZU6zS7Q)
 
+## 🔀 快速切换 Provider
+
+启动 CLI 之后，直接在 REPL 里输入：
+
+```text
+/provider anthropic
+/provider openai
+/provider gemini
+/provider grok
+```
+
+- `/provider`：查看当前 provider
+- `/provider openai`：切到 OpenAI/Codex 协议路径
+- `/provider anthropic`：切回 Anthropic 兼容路径
+- `/login`：给当前 provider 走登录/密钥配置
+
+如果你是源码启动，也可以直接带环境变量：
+
+```bash
+CLAUDE_CODE_USE_OPENAI=1 bun run dev
+CLAUDE_CODE_USE_GEMINI=1 bun run dev
+```
+
 - ✅ [x] V4 — 测试补全、[Buddy](https://ccb.agent-aura.top/docs/features/buddy)、[Auto Mode](https://ccb.agent-aura.top/docs/safety/auto-mode)、环境变量 Feature 开关
 - ✅ [x] V5 — [Sentry](https://ccb.agent-aura.top/docs/internals/sentry-setup) / [GrowthBook](https://ccb.agent-aura.top/docs/internals/growthbook-adapter) 企业监控、[自定义 Login](https://ccb.agent-aura.top/docs/features/custom-platform-login)、[OpenAI 兼容](https://ccb.agent-aura.top/docs/plans/openai-compatibility)、[Web Search](https://ccb.agent-aura.top/docs/features/web-browser-tool)、[Computer Use](https://ccb.agent-aura.top/docs/features/computer-use) / [Chrome Use](https://ccb.agent-aura.top/docs/features/claude-in-chrome-mcp)、[Voice Mode](https://ccb.agent-aura.top/docs/features/voice-mode)、[Bridge Mode](https://ccb.agent-aura.top/docs/features/bridge-mode)、[/dream 记忆整理](https://ccb.agent-aura.top/docs/features/auto-dream)
 - 🔮 [ ] V6 — 大规模重构石山代码，全面模块分包（全新分支，main 封存为历史版本）

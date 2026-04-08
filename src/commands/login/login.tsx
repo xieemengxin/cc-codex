@@ -7,6 +7,7 @@ import {
 } from '../../bridge/trustedDevice.js'
 import type { LocalJSXCommandContext } from '../../commands.js'
 import { ConfigurableShortcutHint } from '../../components/ConfigurableShortcutHint.js'
+import { CodexOAuthFlow } from '../../components/CodexOAuthFlow.js'
 import { ConsoleOAuthFlow } from '../../components/ConsoleOAuthFlow.js'
 import { Dialog } from '@anthropic/ink'
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js'
@@ -16,6 +17,10 @@ import { refreshPolicyLimits } from '../../services/policyLimits/index.js'
 import { refreshRemoteManagedSettings } from '../../services/remoteManagedSettings/index.js'
 import type { LocalJSXCommandOnDone } from '../../types/command.js'
 import { stripSignatureBlocks } from '../../utils/messages.js'
+import {
+  getModelProviderKind,
+  isCodexProviderEnabled,
+} from '../../utils/model/providerMode.js'
 import {
   checkAndDisableAutoModeIfNeeded,
   checkAndDisableBypassPermissionsIfNeeded,
@@ -35,7 +40,7 @@ export async function call(
         // Signature-bearing blocks (thinking, connector_text) are bound to the API key —
         // strip them so the new key doesn't reject stale signatures.
         context.setMessages(stripSignatureBlocks)
-        if (success) {
+        if (success && !isCodexProviderEnabled()) {
           // Post-login refresh logic. Keep in sync with onboarding in src/interactiveHelpers.tsx
           // Reset cost state when switching accounts
           resetCostState()
@@ -68,13 +73,19 @@ export async function call(
               appState.fastMode,
             )
           }
+        }
+        if (success) {
           // Increment authVersion to trigger re-fetching of auth-dependent data in hooks (e.g., MCP servers)
           context.setAppState(prev => ({
             ...prev,
             authVersion: prev.authVersion + 1,
           }))
         }
-        onDone(success ? 'Login successful' : 'Login interrupted')
+        onDone(
+          success
+            ? `${getModelProviderKind() === 'codex' ? 'Codex' : 'Anthropic'} login successful`
+            : 'Login interrupted',
+        )
       }}
     />
   )
@@ -85,10 +96,11 @@ export function Login(props: {
   startingMessage?: string
 }): React.ReactNode {
   const mainLoopModel = useMainLoopModel()
+  const provider = getModelProviderKind()
 
   return (
     <Dialog
-      title="Login"
+      title={provider === 'codex' ? 'Codex Login' : 'Login'}
       onCancel={() => props.onDone(false, mainLoopModel)}
       color="permission"
       inputGuide={exitState =>
@@ -104,10 +116,20 @@ export function Login(props: {
         )
       }
     >
-      <ConsoleOAuthFlow
-        onDone={() => props.onDone(true, mainLoopModel)}
-        startingMessage={props.startingMessage}
-      />
+      {provider === 'codex' ? (
+        <CodexOAuthFlow
+          onDone={() => props.onDone(true, mainLoopModel)}
+          startingMessage={
+            props.startingMessage ??
+            'This will open the ChatGPT/Codex login flow for the OpenAI/Codex provider.'
+          }
+        />
+      ) : (
+        <ConsoleOAuthFlow
+          onDone={() => props.onDone(true, mainLoopModel)}
+          startingMessage={props.startingMessage}
+        />
+      )}
     </Dialog>
   )
 }

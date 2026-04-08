@@ -1332,8 +1332,15 @@ async function* queryModel(
   // after shared preprocessing (message normalization, tool filtering,
   // media stripping) but before Anthropic-specific logic (betas, thinking, caching).
   if (getAPIProvider() === 'openai') {
-    const { queryModelOpenAI } = await import('./openai/index.js')
-    yield* queryModelOpenAI(messagesForAPI, systemPrompt, filteredTools, signal, options)
+    const { queryCodexModelWithStreaming } = await import('./codex.js')
+    yield* queryCodexModelWithStreaming({
+      messages: messagesForAPI,
+      systemPrompt,
+      thinkingConfig,
+      tools: filteredTools,
+      signal,
+      options,
+    })
     return
   }
 

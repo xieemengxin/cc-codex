@@ -11,6 +11,7 @@ import {
 } from 'src/services/analytics/index.js'
 import { getModelStrings } from 'src/utils/model/modelStrings.js'
 import { getAPIProvider } from 'src/utils/model/providers.js'
+import { getCodexAccountStatus } from './codex/auth.js'
 import {
   getIsNonInteractiveSession,
   preferThirdPartyAuthentication,
@@ -1863,6 +1864,30 @@ export type UserAccountInfo = {
 
 export function getAccountInformation() {
   const apiProvider = getAPIProvider()
+  if (apiProvider === 'openai') {
+    const status = getCodexAccountStatus()
+    if (!status.loggedIn && !status.apiKeySource) {
+      return undefined
+    }
+    const accountInfo: UserAccountInfo = {}
+    if (status.authMode !== 'none') {
+      accountInfo.tokenSource = status.authMode
+    }
+    if (status.apiKeySource) {
+      accountInfo.apiKeySource = status.apiKeySource as ApiKeySource
+    }
+    if (status.email) {
+      accountInfo.email = status.email
+    }
+    if (status.accountId) {
+      accountInfo.organization = status.accountId
+    }
+    if (status.planType) {
+      accountInfo.subscription = status.planType
+    }
+    return accountInfo
+  }
+
   // Only provide account info for first-party Anthropic API
   if (apiProvider !== 'firstParty') {
     return undefined

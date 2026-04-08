@@ -42,7 +42,12 @@ export function anthropicToolsToOpenAI(
  * support the `const` keyword in JSON Schema. Convert it to `enum` with a
  * single-element array, which is semantically equivalent.
  */
-function sanitizeJsonSchema(schema: Record<string, unknown>): Record<string, unknown> {
+export function sanitizeJsonSchema(
+  schema: Record<string, unknown>,
+  options: {
+    strict?: boolean
+  } = {},
+): Record<string, unknown> {
   if (!schema || typeof schema !== 'object') return schema
 
   const result = { ...schema }
@@ -60,7 +65,10 @@ function sanitizeJsonSchema(schema: Record<string, unknown>): Record<string, unk
     if (nested && typeof nested === 'object') {
       const sanitized: Record<string, unknown> = {}
       for (const [k, v] of Object.entries(nested as Record<string, unknown>)) {
-        sanitized[k] = v && typeof v === 'object' ? sanitizeJsonSchema(v as Record<string, unknown>) : v
+        sanitized[k] =
+          v && typeof v === 'object'
+            ? sanitizeJsonSchema(v as Record<string, unknown>, options)
+            : v
       }
       result[key] = sanitized
     }
@@ -71,7 +79,10 @@ function sanitizeJsonSchema(schema: Record<string, unknown>): Record<string, unk
   for (const key of singleKeys) {
     const nested = result[key]
     if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
-      result[key] = sanitizeJsonSchema(nested as Record<string, unknown>)
+      result[key] = sanitizeJsonSchema(
+        nested as Record<string, unknown>,
+        options,
+      )
     }
   }
 
@@ -81,12 +92,102 @@ function sanitizeJsonSchema(schema: Record<string, unknown>): Record<string, unk
     const nested = result[key]
     if (Array.isArray(nested)) {
       result[key] = nested.map(item =>
-        item && typeof item === 'object' ? sanitizeJsonSchema(item as Record<string, unknown>) : item
+        item && typeof item === 'object'
+          ? sanitizeJsonSchema(item as Record<string, unknown>, options)
+          : item
       )
     }
   }
 
+  if (
+    options.strict &&
+    (result.type === 'object' || 'properties' in result) &&
+    result.properties &&
+    typeof result.properties === 'object' &&
+    !Array.isArray(result.properties)
+  ) {
+    const properties = result.properties as Record<string, unknown>
+    const originalRequired = new Set(
+      Array.isArray(result.required)
+        ? result.required.filter(
+            (value): value is string => typeof value === 'string',
+          )
+        : [],
+    )
+
+    const strictProperties: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(properties)) {
+      const child =
+        value && typeof value === 'object' && !Array.isArray(value)
+          ? (value as Record<string, unknown>)
+          : {}
+      strictProperties[key] = originalRequired.has(key)
+        ? child
+        : makeSchemaNullable(child)
+    }
+
+    result.properties = strictProperties
+    result.required = Object.keys(strictProperties)
+    result.additionalProperties = false
+  }
+
   return result
+}
+
+function makeSchemaNullable(
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
+  if (schema.nullable === true) {
+    const copy = { ...schema }
+    delete copy.nullable
+    return makeSchemaNullable(copy)
+  }
+
+  if (typeof schema.type === 'string') {
+    return schema.type === 'null'
+      ? schema
+      : { ...schema, type: [schema.type, 'null'] }
+  }
+
+  if (Array.isArray(schema.type)) {
+    return schema.type.includes('null')
+      ? schema
+      : { ...schema, type: [...schema.type, 'null'] }
+  }
+
+  if (Array.isArray(schema.enum)) {
+    return schema.enum.includes(null)
+      ? schema
+      : { ...schema, enum: [...schema.enum, null] }
+  }
+
+  if (Array.isArray(schema.anyOf)) {
+    return schema.anyOf.some(isNullSchema)
+      ? schema
+      : { ...schema, anyOf: [...schema.anyOf, { type: 'null' }] }
+  }
+
+  if (Array.isArray(schema.oneOf)) {
+    return schema.oneOf.some(isNullSchema)
+      ? schema
+      : { ...schema, oneOf: [...schema.oneOf, { type: 'null' }] }
+  }
+
+  return {
+    anyOf: [schema, { type: 'null' }],
+    ...(typeof schema.description === 'string'
+      ? { description: schema.description }
+      : {}),
+  }
+}
+
+function isNullSchema(value: unknown): boolean {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    'type' in value &&
+    (value as Record<string, unknown>).type === 'null'
+  )
 }
 
 /**

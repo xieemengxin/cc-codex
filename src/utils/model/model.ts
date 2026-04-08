@@ -29,12 +29,21 @@ import { LIGHTNING_BOLT } from '../../constants/figures.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { type ModelAlias, isModelAlias } from './aliases.js'
 import { capitalize } from '../stringUtils.js'
+import { getCodexProviderConfigValue } from '../codex/config.js'
+import {
+  getCodexDefaultModel,
+  getCodexModelDisplayName,
+} from './codexCatalog.js'
+import { isCodexProviderEnabled } from './providerMode.js'
 
 export type ModelShortName = string
 export type ModelName = string
 export type ModelSetting = ModelName | ModelAlias | null
 
 export function getSmallFastModel(): ModelName {
+  if (isCodexProviderEnabled()) {
+    return parseUserSpecifiedModel(getDefaultMainLoopModelSetting())
+  }
   const provider = getAPIProvider()
   // Provider-specific small fast model
   if (provider === 'openai' && process.env.OPENAI_SMALL_FAST_MODEL) {
@@ -75,8 +84,12 @@ export function getUserSpecifiedModelSetting(): ModelSetting | undefined {
   if (modelOverride !== undefined) {
     specifiedModel = modelOverride
   } else {
-    const settings = getSettings_DEPRECATED() || {}
-    specifiedModel = process.env.ANTHROPIC_MODEL || settings.model || undefined
+    if (isCodexProviderEnabled()) {
+      specifiedModel = getCodexProviderConfigValue('model') || undefined
+    } else {
+      const settings = getSettings_DEPRECATED() || {}
+      specifiedModel = process.env.ANTHROPIC_MODEL || settings.model || undefined
+    }
   }
 
   // Ignore the user-specified model if it's not in the availableModels allowlist.
@@ -113,6 +126,9 @@ export function getBestModel(): ModelName {
 
 // @[MODEL LAUNCH]: Update the default Opus model (3P providers may lag so keep defaults unchanged).
 export function getDefaultOpusModel(): ModelName {
+  if (isCodexProviderEnabled()) {
+    return getCodexDefaultModel()
+  }
   const provider = getAPIProvider()
   // For OpenAI provider, check OPENAI_DEFAULT_OPUS_MODEL first
   if (provider === 'openai' && process.env.OPENAI_DEFAULT_OPUS_MODEL) {
@@ -137,6 +153,9 @@ export function getDefaultOpusModel(): ModelName {
 
 // @[MODEL LAUNCH]: Update the default Sonnet model (3P providers may lag so keep defaults unchanged).
 export function getDefaultSonnetModel(): ModelName {
+  if (isCodexProviderEnabled()) {
+    return getCodexDefaultModel()
+  }
   const provider = getAPIProvider()
   // For OpenAI provider, check OPENAI_DEFAULT_SONNET_MODEL first
   if (
@@ -162,6 +181,9 @@ export function getDefaultSonnetModel(): ModelName {
 
 // @[MODEL LAUNCH]: Update the default Haiku model (3P providers may lag so keep defaults unchanged).
 export function getDefaultHaikuModel(): ModelName {
+  if (isCodexProviderEnabled()) {
+    return getCodexDefaultModel()
+  }
   const provider = getAPIProvider()
   // For OpenAI provider, check OPENAI_DEFAULT_HAIKU_MODEL first
   if (provider === 'openai' && process.env.OPENAI_DEFAULT_HAIKU_MODEL) {
@@ -219,6 +241,10 @@ export function getRuntimeMainLoopModel(params: {
  * @returns The default model setting to use
  */
 export function getDefaultMainLoopModelSetting(): ModelName | ModelAlias {
+  if (isCodexProviderEnabled()) {
+    return getCodexProviderConfigValue('model') ?? getCodexDefaultModel()
+  }
+
   // Ants default to defaultModel from flag config, or Opus 1M if not configured
   if (process.env.USER_TYPE === 'ant') {
     return (
@@ -320,6 +346,9 @@ export function firstPartyNameToCanonical(name: ModelName): ModelShortName {
  * @returns The short name (e.g., 'claude-3-5-haiku') if found, or the original name if no mapping exists
  */
 export function getCanonicalName(fullModelName: ModelName): ModelShortName {
+  if (isCodexProviderEnabled()) {
+    return fullModelName
+  }
   // Resolve overridden model IDs (e.g. Bedrock ARNs) back to canonical names.
   // resolved is always a 1P-format ID, so firstPartyNameToCanonical can handle it.
   return firstPartyNameToCanonical(resolveOverriddenModel(fullModelName))
@@ -436,6 +465,9 @@ function maskModelCodename(baseName: string): string {
 }
 
 export function renderModelName(model: ModelName): string {
+  if (isCodexProviderEnabled()) {
+    return getCodexModelDisplayName(model)
+  }
   const publicName = getPublicModelDisplayName(model)
   if (publicName) {
     return publicName
@@ -489,6 +521,11 @@ export function parseUserSpecifiedModel(
   modelInput: ModelName | ModelAlias,
 ): ModelName {
   const modelInputTrimmed = modelInput.trim()
+
+  if (isCodexProviderEnabled()) {
+    return modelInputTrimmed
+  }
+
   const normalizedModel = modelInputTrimmed.toLowerCase()
 
   const has1mTag = has1mContext(normalizedModel)
@@ -598,6 +635,9 @@ export function isLegacyModelRemapEnabled(): boolean {
 
 export function modelDisplayString(model: ModelSetting): string {
   if (model === null) {
+    if (isCodexProviderEnabled()) {
+      return `Default (${getCodexDefaultModel()})`
+    }
     if (process.env.USER_TYPE === 'ant') {
       return `Default for Ants (${renderDefaultModelSetting(getDefaultMainLoopModelSetting())})`
     } else if (isClaudeAISubscriber()) {
@@ -611,6 +651,9 @@ export function modelDisplayString(model: ModelSetting): string {
 
 // @[MODEL LAUNCH]: Add a marketing name mapping for the new model below.
 export function getMarketingNameForModel(modelId: string): string | undefined {
+  if (isCodexProviderEnabled()) {
+    return getCodexModelDisplayName(modelId)
+  }
   if (getAPIProvider() === 'foundry') {
     // deployment ID is user-defined in Foundry, so it may have no relation to the actual model
     return undefined
